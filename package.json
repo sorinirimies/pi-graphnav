@@ -1,6 +1,6 @@
 {
   "name": "pi-graphnav",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CodeGraph-first code navigation for pi: persistent index, auto init/sync, and a gate that steers structural searches to codegraph_* tools.",
   "keywords": [
     "pi-package",

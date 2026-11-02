@@ -3,6 +3,16 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.2.0](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.0) — 2026-11-02
+
+
+### ✨ Features
+
+- Resilient CodeGraph calls, stuck-index repair, file-name and codemode gating, large-read hint, per-project settings, gate stats ([`f0f55d5`](https://github.com/sorinirimies/pi-graphnav/commit/f0f55d505aaff53c382b4f17e690545da554afad))
+
+### 📚 Docs
+
+- README demos recorded with VHS (overview, nudge, commands) ([`2a8172d`](https://github.com/sorinirimies/pi-graphnav/commit/2a8172db82cab358e354966f961697b299af2d3e))
 ## [0.1.0](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.1.0) — 2026-11-02
 
 
