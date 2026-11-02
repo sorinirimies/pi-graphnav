@@ -8,8 +8,10 @@
 // One property per parser or pure function: assert what must ALWAYS hold, not one example.
 import { describe, expect, it } from "bun:test";
 import { parseCommand } from "../extensions/command/parse.ts";
-import { sanitizeConfig } from "../extensions/core/config.ts";
-import { greet } from "../extensions/core/greet.ts";
+import { MODES, sanitizeConfig } from "../extensions/core/config.ts";
+import { findSearches, splitCommands, symbolsIn } from "../extensions/core/gate.ts";
+import { parseStatus } from "../extensions/core/project.ts";
+import { normalizeFilesPath } from "../extensions/core/tools.ts";
 
 const ITERS = Number(process.env.FUZZ_ITERS ?? 400);
 const SEED = Number(process.env.FUZZ_SEED ?? Math.floor(Math.random() * 2 ** 31));
@@ -34,6 +36,15 @@ function text(r: () => number, max = 24): string {
 	return s;
 }
 
+/** Text built from shell-ish pieces, so the command parser sees operators, quotes and flags often. */
+const PIECES = ["rg", "grep", "git grep", "-e", "-n", "--type=ts", "-g", "'", '"', "\\", "|", "||", "&&", ";", "(", ")", "\n", "|&", "--", "-", "xargs", "timeout", "5", "FOO=1", "parseConfig", "a.md", "src"];
+function shell(r: () => number): string {
+	const n = Math.floor(r() * 12);
+	let s = "";
+	for (let i = 0; i < n; i++) s += (r() < 0.7 ? PIECES[Math.floor(r() * PIECES.length)] : text(r, 6)) + (r() < 0.7 ? " " : "");
+	return s;
+}
+
 /** Run `fn` ITERS times; on failure say which iteration and how to reproduce it. */
 function fuzz(name: string, fn: (r: () => number) => void, iters = ITERS) {
 	it(`${name} (seed ${SEED}, ${iters} runs)`, () => {
@@ -49,22 +60,60 @@ function fuzz(name: string, fn: (r: () => number) => void, iters = ITERS) {
 }
 
 describe("fuzz", () => {
-	fuzz("greet never throws and always greets", (r) => {
-		const out = greet(text(r));
-		expect(out.startsWith("Hello")).toBe(true);
-		expect(out.endsWith("!")).toBe(true);
-	});
-
 	fuzz("parseCommand never throws and always returns a known kind", (r) => {
-		const kind = parseCommand(text(r, 40)).kind;
-		expect(["status", "on", "off", "level", "hello", "invalid"]).toContain(kind);
+		const kind = parseCommand(r() < 0.5 ? text(r, 40) : `mode ${text(r, 10)}`).kind;
+		expect(["status", "on", "off", "mode", "sync", "reindex", "init", "invalid"]).toContain(kind);
 	});
 
 	fuzz("sanitizeConfig turns any JSON into a valid config", (r) => {
-		const raw = r() < 0.5 ? JSON.parse(JSON.stringify({ enabled: text(r), level: r() * 1000 - 300, showStatus: r() < 0.5 })) : text(r);
+		const raw =
+			r() < 0.5
+				? JSON.parse(
+						JSON.stringify({
+							enabled: r() < 0.5 ? text(r) : r() < 0.5,
+							showStatus: r() < 0.5,
+							mode: r() < 0.5 ? MODES[Math.floor(r() * 3)] : text(r),
+							autoInit: r() < 0.5 ? 1 : true,
+							readHintAfter: r() * 1000 - 300,
+							timeoutMs: r() < 0.2 ? text(r) : r() * 2e6 - 1000,
+						}),
+					)
+				: text(r);
 		const c = sanitizeConfig(raw);
-		expect(typeof c.enabled).toBe("boolean");
-		expect(typeof c.showStatus).toBe("boolean");
-		expect(Number.isInteger(c.level) && c.level >= 1 && c.level <= 100).toBe(true);
+		for (const k of ["enabled", "showStatus", "autoInit", "autoSync", "watch"] as const) expect(typeof c[k]).toBe("boolean");
+		expect(MODES).toContain(c.mode);
+		expect(Number.isInteger(c.readHintAfter) && c.readHintAfter >= 0 && c.readHintAfter <= 100).toBe(true);
+		expect(Number.isInteger(c.timeoutMs) && c.timeoutMs >= 1000 && c.timeoutMs <= 600_000).toBe(true);
+	});
+
+	fuzz("splitCommands and findSearches never throw on random input", (r) => {
+		const cmd = r() < 0.5 ? shell(r) : text(r, 60);
+		for (const words of splitCommands(cmd)) expect(words.length).toBeGreaterThan(0);
+		for (const s of findSearches(cmd)) {
+			expect(Array.isArray(s.paths)).toBe(true);
+			expect(Array.isArray(s.filters)).toBe(true);
+		}
+	});
+
+	fuzz("symbolsIn never throws and returns only identifier-like strings", (r) => {
+		const p = r() < 0.5 ? text(r, 30) : `${r() < 0.5 ? "\\b" : ""}${text(r, 4)}${shell(r).replace(/\s+/g, "|")}`;
+		const out = symbolsIn(p);
+		if (out === undefined) return;
+		expect(out.length).toBeGreaterThan(0);
+		for (const s of out) expect(s).toMatch(/^[A-Za-z_$][\w$]*(?:(?:::|\.|#|->)[A-Za-z_$][\w$]*)*$/);
+	});
+
+	fuzz("parseStatus never throws on random text", (r) => {
+		const raw = r() < 0.5 ? text(r, 60) : JSON.stringify({ initialized: r() < 0.5, fileCount: text(r), index: r() < 0.5 ? null : { state: text(r) } });
+		const s = parseStatus(raw);
+		expect(typeof s.initialized).toBe("boolean");
+		expect(Number.isFinite(s.files) && Number.isFinite(s.pending)).toBe(true);
+	});
+
+	fuzz("normalizeFilesPath never returns a leading / for paths under the root", (r) => {
+		const root = `/${text(r, 8).replace(/[\\/]/g, "") || "r"}`;
+		const rel = text(r, 20);
+		const out = normalizeFilesPath(`${root}/${rel}`, root);
+		if (out !== undefined) expect(out.startsWith("/")).toBe(false);
 	});
 });

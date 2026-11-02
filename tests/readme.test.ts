@@ -9,7 +9,7 @@ const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8").re
 
 /** `/codegraph ...` spans, with `a|b` alternatives and <placeholders> expanded. */
 function documented(): string[] {
-	const PLACEHOLDERS: Record<string, string> = { "<1-100>": "5", "<name>": "pi" };
+	const PLACEHOLDERS: Record<string, string> = { "<mode>": "nudge", "<enforce|nudge|off>": "nudge" };
 	const out = new Set<string>();
 	for (const m of readme.matchAll(/`(\/codegraph[^`]*)`/g)) {
 		let variants = [m[1]!.replace(/\\\|/g, "|")];

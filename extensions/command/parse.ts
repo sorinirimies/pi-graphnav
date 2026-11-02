@@ -1,14 +1,17 @@
 /** `/codegraph ...`: parsing and argument completion. Pure: the handler in codegraph.ts acts on the result. */
+import { MODES, type Mode } from "../core/config.ts";
 
 export type Command =
 	| { kind: "status" }
 	| { kind: "on" }
 	| { kind: "off" }
-	| { kind: "level"; level: number }
-	| { kind: "hello"; name: string }
+	| { kind: "mode"; mode: Mode }
+	| { kind: "sync" }
+	| { kind: "reindex" }
+	| { kind: "init" }
 	| { kind: "invalid"; message: string };
 
-export const USAGE = "Usage: /codegraph [status] · on · off · level <1-100> · hello [name]";
+export const USAGE = "Usage: /codegraph [status] · on · off · mode <enforce|nudge|off> · sync · reindex · init";
 
 export function parseCommand(args: string | undefined): Command {
 	const [cmd, ...rest] = (args ?? "").trim().split(/\s+/).filter(Boolean);
@@ -22,14 +25,19 @@ export function parseCommand(args: string | undefined): Command {
 		case "off":
 		case "disable":
 			return { kind: "off" };
-		case "level": {
-			const n = Number(rest[0]);
-			return Number.isInteger(n) && n >= 1 && n <= 100
-				? { kind: "level", level: n }
-				: { kind: "invalid", message: "Usage: /codegraph level <1-100>" };
+		case "mode": {
+			const m = rest[0]?.toLowerCase();
+			return MODES.includes(m as Mode) && rest.length === 1
+				? { kind: "mode", mode: m as Mode }
+				: { kind: "invalid", message: "Usage: /codegraph mode <enforce|nudge|off>" };
 		}
-		case "hello":
-			return { kind: "hello", name: rest.join(" ") };
+		case "sync":
+			return { kind: "sync" };
+		case "reindex":
+		case "index":
+			return { kind: "reindex" };
+		case "init":
+			return { kind: "init" };
 		default:
 			return { kind: "invalid", message: `Unknown option "${cmd}". ${USAGE}` };
 	}
@@ -43,16 +51,25 @@ export interface CompletionItem {
 }
 
 const TOP_LEVEL: CompletionItem[] = [
-	{ value: "status", label: "status", description: "Show the settings" },
-	{ value: "on", label: "on", description: "Turn CodeGraph on" },
-	{ value: "off", label: "off", description: "Turn CodeGraph off" },
-	{ value: "level ", label: "level", description: "Set the level (1 to 100)" },
-	{ value: "hello", label: "hello", description: "Say hello (sample)" },
+	{ value: "status", label: "status", description: "Index state, mode and gate counts" },
+	{ value: "on", label: "on", description: "Turn CodeGraph-first on" },
+	{ value: "off", label: "off", description: "Turn CodeGraph-first off" },
+	{ value: "mode ", label: "mode", description: "Symbol searches: enforce, nudge or off" },
+	{ value: "sync", label: "sync", description: "Sync the index with changed files" },
+	{ value: "reindex", label: "reindex", description: "Rebuild the index from scratch" },
+	{ value: "init", label: "init", description: "Create the index for this project" },
+];
+
+const MODE_ITEMS: CompletionItem[] = [
+	{ value: "mode enforce", label: "enforce", description: "Block a symbol search once, pointing to CodeGraph" },
+	{ value: "mode nudge", label: "nudge", description: "Let it run, add a CodeGraph hint to the result" },
+	{ value: "mode off", label: "off", description: "Leave text searches alone" },
 ];
 
 /** `prefix` is the whole argument text typed so far (pi replaces it with `value`). */
 export function completions(prefix: string): CompletionItem[] | null {
 	const text = (prefix ?? "").toLowerCase().replace(/^\s+/, "");
-	const out = TOP_LEVEL.filter((i) => i.value.startsWith(text));
+	const pool = text.startsWith("mode ") ? MODE_ITEMS : TOP_LEVEL;
+	const out = pool.filter((i) => i.value.startsWith(text));
 	return out.length > 0 ? out : null;
 }

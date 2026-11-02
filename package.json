@@ -2,7 +2,13 @@
   "name": "pi-codegraph",
   "version": "0.1.0",
   "description": "CodeGraph-first code navigation for pi: persistent index, auto init/sync, and a gate that steers structural searches to codegraph_* tools.",
-  "keywords": ["pi-package", "pi-extension"],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "codegraph",
+    "code-intelligence",
+    "mcp"
+  ],
   "license": "MIT",
   "author": "Sorin Albu-Irimies",
   "repository": {
@@ -10,9 +16,15 @@
     "url": "git+https://github.com/sorinirimies/pi-codegraph.git"
   },
   "homepage": "https://github.com/sorinirimies/pi-codegraph#readme",
-  "files": ["extensions", "README.md", "LICENSE"],
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
-    "extensions": ["./extensions/codegraph.ts"]
+    "extensions": [
+      "./extensions/codegraph.ts"
+    ]
   },
   "scripts": {
     "test": "bun test",
@@ -22,7 +34,8 @@
     "check": "nu scripts/ci/quality_gate.nu"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*"
   },
   "overrides": {
     "undici": "8.12.3",
@@ -31,6 +44,7 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^1.4.0",
     "@types/bun": "^1.4.4",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@earendil-works/pi-ai": "^1.4.0"
   }
 }

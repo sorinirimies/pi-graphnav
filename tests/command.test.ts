@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { completions, parseCommand } from "../extensions/command/parse.ts";
+import { completions, parseCommand, USAGE } from "../extensions/command/parse.ts";
 
 describe("parseCommand", () => {
 	test("no argument and status show the status", () => {
@@ -15,28 +15,42 @@ describe("parseCommand", () => {
 		expect(parseCommand("disable")).toEqual({ kind: "off" });
 	});
 
-	test("level takes an integer 1..100", () => {
-		expect(parseCommand("level 5")).toEqual({ kind: "level", level: 5 });
-		for (const bad of ["level", "level 0", "level 101", "level x", "level 2.5"]) expect(parseCommand(bad).kind).toBe("invalid");
+	test("mode takes exactly one of enforce, nudge, off", () => {
+		expect(parseCommand("mode enforce")).toEqual({ kind: "mode", mode: "enforce" });
+		expect(parseCommand("mode NUDGE")).toEqual({ kind: "mode", mode: "nudge" });
+		expect(parseCommand(" mode   off ")).toEqual({ kind: "mode", mode: "off" });
+		for (const bad of ["mode", "mode loud", "mode nudge off"]) {
+			const c = parseCommand(bad);
+			expect(c.kind === "invalid" && c.message).toContain("mode <enforce|nudge|off>");
+		}
 	});
 
-	test("hello takes the rest of the line", () => {
-		expect(parseCommand("hello big world")).toEqual({ kind: "hello", name: "big world" });
-		expect(parseCommand("hello")).toEqual({ kind: "hello", name: "" });
+	test("sync, reindex (alias index) and init", () => {
+		expect(parseCommand("sync")).toEqual({ kind: "sync" });
+		expect(parseCommand("reindex")).toEqual({ kind: "reindex" });
+		expect(parseCommand("index")).toEqual({ kind: "reindex" });
+		expect(parseCommand("init")).toEqual({ kind: "init" });
 	});
 
 	test("anything else is invalid and prints the usage", () => {
 		const c = parseCommand("bogus");
-		expect(c.kind === "invalid" && c.message).toContain("Usage: /codegraph");
+		expect(c.kind === "invalid" && c.message).toContain('Unknown option "bogus"');
+		expect(c.kind === "invalid" && c.message).toContain(USAGE);
 	});
 });
 
 describe("completions", () => {
 	test("completes the top level by prefix, every item has a label", () => {
-		expect(completions("")!.map((i) => i.value)).toEqual(["status", "on", "off", "level ", "hello"]);
+		expect(completions("")!.map((i) => i.value)).toEqual(["status", "on", "off", "mode ", "sync", "reindex", "init"]);
 		expect(completions("o")!.map((i) => i.label)).toEqual(["on", "off"]);
-		expect(completions("  LEV")!.map((i) => i.label)).toEqual(["level"]);
+		expect(completions("  MO")!.map((i) => i.label)).toEqual(["mode"]);
 		for (const i of completions("")!) expect(typeof i.label).toBe("string");
+	});
+
+	test("after `mode ` it offers the modes", () => {
+		expect(completions("mode ")!.map((i) => i.value)).toEqual(["mode enforce", "mode nudge", "mode off"]);
+		expect(completions("mode n")!.map((i) => i.label)).toEqual(["nudge"]);
+		expect(completions("mode x")).toBeNull();
 	});
 
 	test("nothing matches, nothing is offered", () => {
