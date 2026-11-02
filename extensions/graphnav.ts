@@ -17,10 +17,13 @@ import { completions, parseCommand } from "./command/parse.ts";
 import { type Config, DEFAULT_CONFIG, type ProjectOverrides, readConfig, readProjectConfig, saveConfig } from "./core/config.ts";
 import {
 	codemodeSearches,
+	candidateSymbols,
 	decide,
 	findFileSearches,
 	findSearches,
 	type GateMemory,
+	definitionsIn,
+	leafOf,
 	isSourceFile,
 	lookupWords,
 	newMemory,
@@ -131,6 +134,15 @@ export interface Deps {
 	breaker?: { threshold: number; resetMs: number };
 }
 
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+	new Promise((resolve, reject) => {
+		const t = setTimeout(() => reject(new Error("timeout")), ms);
+		p.then(
+			(v) => (clearTimeout(t), resolve(v)),
+			(e) => (clearTimeout(t), reject(e)),
+		);
+	});
+
 export function createExtension(deps: Deps = {}) {
 	const run = deps.run ?? defaultRunner;
 	return function (pi: ExtensionAPI) {
@@ -198,6 +210,9 @@ export function createExtension(deps: Deps = {}) {
 					index = status;
 					lastError = error;
 					state = error ? "error" : status.initialized ? "ready" : "missing";
+					// the index changed: earlier probe answers may be stale
+					mem.unindexed.clear();
+					mem.defined.clear();
 				})
 				.finally(() => {
 					job = undefined;
@@ -300,6 +315,24 @@ export function createExtension(deps: Deps = {}) {
 			if (!config.enabled || config.mode === "off" || state !== "ready" || unavailable()) return;
 			const searches = searchesOf(event.toolName, event.input ?? {});
 			if (searches.length === 0) return;
+			// Gate only what the index defines: a word it has never heard of is text, not a symbol.
+			const root = project?.root;
+			if (root) {
+				const unknown = candidateSymbols(searches, mem).filter((sym) => !mem.defined.has(leafOf(sym)));
+				await Promise.all(
+					unknown.map(async (sym) => {
+						try {
+							const res = await withTimeout(server(root).call("codegraph_search", { query: leafOf(sym), limit: 25, projectPath: root }), 2000);
+							if (res.isError) return;
+							const at = definitionsIn(resultText(res), sym);
+							if (at.length === 0) mem.unindexed.add(leafOf(sym));
+							else mem.defined.set(leafOf(sym), at);
+						} catch {
+							// index unreachable or slow: fail open to the usual gate rather than guess
+						}
+					}),
+				);
+			}
 			const d = decide(config.mode, searches, `${event.toolName}\u0000${JSON.stringify(event.input)}`, mem);
 			if (d.action === "block") {
 				counts.blocked++;

@@ -114,7 +114,7 @@ export const isCodeGraphTool = (name: string): boolean => TOOL_NAMES.includes(na
 
 /** Guidelines added to the system prompt while the tools are active (static: they never break the prompt cache). */
 export const GUIDELINES = [
-	"Understand code through CodeGraph first: codegraph_explore for how something works or where to change it, codegraph_search to find a definition, codegraph_callers/codegraph_callees for relations, codegraph_impact before changing a signature, codegraph_files for structure.",
+	"Understand code through CodeGraph first: codegraph_explore for how something works or where to change it, codegraph_search to find a definition, codegraph_node with includeCode for a symbol's body (instead of rg -A), codegraph_callers/codegraph_callees for relations, codegraph_impact before changing a signature, codegraph_files for structure.",
 	"Do not grep (rg, grep, git grep) for symbol names: such searches are redirected to CodeGraph. Text search is for string literals, comments, config and docs, or after CodeGraph came up empty.",
 	"Read a file once CodeGraph has told you where to look, with offset/limit around the reported lines.",
 ];

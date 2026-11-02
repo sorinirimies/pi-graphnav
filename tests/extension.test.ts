@@ -33,6 +33,7 @@ function fakeRun(opts: { status?: unknown; statusCode?: number; code?: number; h
 /** A fake `codegraph serve --mcp`: answers initialize, and tools/call with its own params (or an error for query "fail"). */
 function fakeSpawn() {
 	const spawned: { args: string[]; proc: EventEmitter & { killed: number } }[] = [];
+	const probes: string[] = [];
 	const spawn: Spawner = (args) => {
 		const proc = Object.assign(new EventEmitter(), {
 			stdout: new EventEmitter(),
@@ -44,15 +45,18 @@ function fakeSpawn() {
 			stdin: {
 				write(line: string) {
 					const msg = JSON.parse(line);
+					if (msg.method === "tools/call" && msg.params.arguments.limit === 25) probes.push(msg.params.arguments.query);
 					const reply = (body: unknown) => queueMicrotask(() => proc.stdout.emit("data", `${JSON.stringify({ jsonrpc: "2.0", id: msg.id, ...(body as object) })}\n`));
 					if (msg.method === "initialize") reply({ result: {} });
 					else if (msg.method === "tools/call" && msg.params.arguments.query === "die") queueMicrotask(() => proc.emit("exit", 1));
 					else if (msg.method === "tools/call")
 						reply({
 							result:
-								msg.params.arguments.query === "fail"
+								/^fail(?:_probe)?$/.test(msg.params.arguments.query)
 									? { isError: true, content: [{ type: "text", text: "bad query" }] }
-									: { content: [{ type: "text", text: JSON.stringify(msg.params) }] },
+									: msg.params.arguments.limit === 25 && !/^(?:summary|nosuch)/.test(msg.params.arguments.query)
+										? { content: [{ type: "text", text: `**${msg.params.arguments.query}** (function)\nsrc/a.ts:1` }] } // the gate's index probe
+										: { content: [{ type: "text", text: JSON.stringify(msg.params) }] },
 						});
 				},
 			},
@@ -60,7 +64,7 @@ function fakeSpawn() {
 		spawned.push({ args, proc });
 		return proc as unknown as ServerProcess;
 	};
-	return { spawn, spawned };
+	return { spawn, spawned, probes };
 }
 
 const repo = () => {
@@ -560,6 +564,31 @@ describe("/codegraph", () => {
 
 describe("0.2: stats, resilience, large reads, project settings", () => {
 	const search = { command: "rg -n parseConfig src" };
+
+	test("a symbol-shaped word the index does not define is text, not blocked", async () => {
+		const s = await start();
+		expect(await s.call("bash", { command: "rg -n nosuch_thing src" }, "n1")).toBeUndefined();
+		expect(await s.call("bash", { command: "rg -n nosuch_thing src" }, "n2")).toBeUndefined();
+		await s.cmd("status");
+		expect(s.ctx.notes.at(-1)![0]).toContain("0 searches blocked");
+	});
+
+	test("the block names where the index defines the symbol", async () => {
+		const s = await start();
+		expect((await s.call("bash", { command: "rg -n start_scan src" }, "d1"))?.reason).toContain("start_scan is defined at src/a.ts:1 (function)");
+		expect((await s.call("bash", { command: "rg -n start_scan lib" }, "d2"))?.reason).toContain("src/a.ts:1");
+		expect(s.server.probes).toEqual(["start_scan"]); // asked once, remembered
+	});
+
+	test("a bare word is never gated, even when the index would define it", async () => {
+		const s = await start();
+		expect(await s.call("bash", { command: "rg -n cache src" }, "w1")).toBeUndefined();
+	});
+
+	test("a broken index probe fails open to the normal gate", async () => {
+		const s = await start();
+		expect((await s.call("bash", { command: "rg -n fail_probe src" }, "f1"))?.block).toBe(true);
+	});
 
 	test("a block answered with CodeGraph counts as followed; a re-run as overridden", async () => {
 		const s = await start();

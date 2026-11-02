@@ -14,6 +14,9 @@ import {
 	splitPipeline,
 	suggestion,
 	symbolsIn,
+	candidateSymbols,
+	definitionsIn,
+	indexDefines,
 	targetsOnlyNonCode,
 } from "../extensions/core/gate.ts";
 
@@ -173,12 +176,71 @@ describe("symbolsIn", () => {
 		expect(symbolsIn("fooBar|some text")).toBeUndefined();
 	});
 
+	test("bare words are prose, not symbols; shape or syntax makes them one", () => {
+		for (const p of ["summary", "cache", "gate", "finished", "Success", "ERROR_", "Config", "ABCDE", "foo_", "\\bsummary\\b", "^cache$"]) expect(symbolsIn(p)).toBeUndefined();
+		expect(symbolsIn("start_scan")).toEqual(["start_scan"]);
+		expect(symbolsIn("MAX_RETRIES")).toEqual(["MAX_RETRIES"]);
+		expect(symbolsIn("ParseConfig")).toEqual(["ParseConfig"]);
+		expect(symbolsIn("parseConfig")).toEqual(["parseConfig"]);
+		expect(symbolsIn("Foo.bar")).toEqual(["Foo.bar"]);
+		expect(symbolsIn("fn summary")).toEqual(["summary"]);
+		expect(symbolsIn("class Config")).toEqual(["Config"]);
+		expect(symbolsIn("summary(")).toEqual(["summary"]);
+		expect(symbolsIn("summary\\(")).toEqual(["summary"]);
+	});
+
 	test("text searches are not symbols", () => {
 		for (const p of [undefined, "", "ab", "hello world", "\"quoted\"", "src/foo.ts", "TODO", "fixme.later", "ERR", "ABCD", "x".repeat(201), "Error: failed"])
 			expect(symbolsIn(p)).toBeUndefined();
-		expect(symbolsIn("ABCDE")).toEqual(["ABCDE"]);
+		expect(symbolsIn("ABCDE")).toBeUndefined();
 		expect(symbolsIn("class")).toBeUndefined();
 		expect(symbolsIn("function")).toBeUndefined();
+	});
+});
+
+describe("indexDefines and candidateSymbols", () => {
+	const text = "**Search Results (2 found)**\n\n**start_scan** (method)\nsrc/a.rs:285\n\n**start_scan_locked** (function)\nsrc/b.rs:1";
+	test("exact, case-insensitive, by last path segment; prefixes do not count", () => {
+		expect(indexDefines(text, "start_scan")).toBe(true);
+		expect(indexDefines(text, "START_SCAN")).toBe(true);
+		expect(indexDefines(text, "App::start_scan")).toBe(true);
+		expect(indexDefines(text, "start")).toBe(false);
+		expect(indexDefines("No results found", "start_scan")).toBe(false);
+	});
+
+	test("definitionsIn lists path:line (kind), capped", () => {
+		expect(definitionsIn(text, "start_scan")).toEqual(["src/a.rs:285 (method)"]);
+		expect(definitionsIn("**x** (function)\n\n", "x")).toEqual(["(function)"]);
+		const many = Array.from({ length: 8 }, (_, i) => `**f** (function)\nf${i}.rs:1`).join("\n\n");
+		expect(definitionsIn(many, "f").length).toBe(5);
+		expect(definitionsIn(many, "f", 2)).toEqual(["f0.rs:1 (function)", "f1.rs:1 (function)"]);
+	});
+
+	test("a block carries where the index defines the symbol", () => {
+		const mem = newMemory();
+		mem.defined.set("start_scan", ["src/a.rs:285 (method)"]);
+		const d = decide("enforce", [search({ pattern: "start_scan" })], "k", mem);
+		expect(d.action === "block" && d.reason).toContain("start_scan is defined at src/a.rs:285 (method).");
+	});
+
+	test("a search inside named files is nudged, not blocked; a directory or glob still blocks", () => {
+		const mem = newMemory();
+		expect(decide("enforce", [search({ pattern: "start_scan", paths: ["src/app.rs"] })], "a", mem).action).toBe("nudge");
+		expect(decide("enforce", [search({ pattern: "start_scan", paths: ["src/app.rs", "src"] })], "b", mem).action).toBe("block");
+		expect(decide("enforce", [search({ pattern: "start_scan", paths: ["src/*.rs"] })], "c", mem).action).toBe("block");
+		expect(decide("enforce", [search({ pattern: "start_scan", paths: ["a.rs"] }), search({ pattern: "spawn_scan" })], "d", mem).action).toBe("block");
+	});
+
+	test("candidates skip file searches, non-code targets, looked-up and unindexed words", () => {
+		const mem = newMemory();
+		const code = { tool: "rg", pattern: "start_scan|run_done", paths: [], filters: [] };
+		expect(candidateSymbols([code], mem)).toEqual(["start_scan", "run_done"]);
+		expect(candidateSymbols([{ ...code, files: true }], mem)).toEqual([]);
+		expect(candidateSymbols([{ ...code, paths: ["README.md"] }], mem)).toEqual([]);
+		mem.unindexed.add("run_done");
+		mem.lookedUp.add("start_scan");
+		expect(candidateSymbols([code], mem)).toEqual([]);
+		expect(decide("enforce", [code], "k", mem).action).toBe("allow");
 	});
 });
 

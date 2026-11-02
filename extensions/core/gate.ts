@@ -228,7 +228,7 @@ const QUALIFIED = /^[A-Za-z_$][\w$]*(?:(?:::|\.|#|->)[A-Za-z_$][\w$]*)*$/;
 const NOT_SYMBOLS = new Set(["todo", "fixme", "hack", "xxx", "note", "bug", "deprecated", "error", "warn", "warning", "info", "debug"]);
 
 /** Strip regex syntax that does not change what is being looked for. */
-function normalizeAlternative(raw: string): string {
+function normalizeAlternative(raw: string): { s: string; declared: boolean } {
 	let s = raw.trim();
 	s = s.replace(/\\[bB<>]/g, "").replace(/\[\[:<:\]\]|\[\[:>:\]\]/g, "");
 	s = s.replace(/^\^/, "").replace(/\$$/, "");
@@ -236,10 +236,23 @@ function normalizeAlternative(raw: string): string {
 		prev = s;
 		s = s.replace(/^\((?:\?:)?/, "").replace(/\)$/, "");
 	}
+	const bare = s;
 	s = s.replace(DECL, "");
+	const declared = s !== bare;
 	s = s.replace(/(?:\\?\(|\\?<|\s*\\s\*\\?\(|\s*\\s\*)$/, "");
+	const called = s !== bare && !declared && /\(\s*$|\\\(/.test(bare);
 	s = s.replace(/^(?:\.\*|\\s\*|\\s\+)+|(?:\.\*|\\s\*|\\s\+)+$/g, "");
-	return s.trim();
+	return { s: s.trim(), declared: declared || called };
+}
+
+/**
+ * Does a bare identifier look like code rather than a word? A plain `summary`, `cache`,
+ * `Success` or `ERROR` is as likely prose or a log string as a symbol, so it only counts when
+ * the search says "symbol": a declaration keyword (`fn summary`) or call syntax (`summary(`).
+ * Otherwise it needs shape: camelCase/PascalCase humps, an inner underscore, or a qualifier.
+ */
+export function isSymbolShaped(s: string): boolean {
+	return /::|\.|#|->/.test(s) || /[a-z0-9][A-Z]/.test(s) || /^[A-Z][a-z0-9]+[A-Z]/.test(s) || /[A-Za-z0-9]_[A-Za-z0-9]/.test(s);
 }
 
 /**
@@ -252,11 +265,13 @@ export function symbolsIn(pattern: string | undefined): string[] | undefined {
 	const alternatives = pattern.split(/\\?\|/);
 	const out: string[] = [];
 	for (const alt of alternatives) {
-		const s = normalizeAlternative(alt);
+		const { s, declared } = normalizeAlternative(alt);
 		if (s.length < 3 || !QUALIFIED.test(s) || KEYWORDS.has(s)) return undefined;
+		if (!declared && !isSymbolShaped(s)) return undefined;
 		const parts = s.split(/::|\.|#|->/);
 		if (parts.some((p) => NOT_SYMBOLS.has(p.toLowerCase()))) return undefined;
 		if (/^[A-Z0-9_]+$/.test(s) && s.length <= 4) return undefined;
+		if (/^_+$|^[a-z]+_$/.test(s)) return undefined;
 		out.push(s);
 	}
 	return out.length > 0 ? out : undefined;
@@ -284,21 +299,64 @@ export interface GateMemory {
 	lookedUp: Set<string>;
 	/** Commands blocked once: running the same command again is the agent's explicit override. */
 	blocked: Set<string>;
+	/** Lower-cased words the index was asked about and does not define: text, not symbols. */
+	unindexed: Set<string>;
+	/** Lower-cased leaf → where the index defines it (`path:line (kind)`), from the gate's probe. */
+	defined: Map<string, string[]>;
 }
 
-export const newMemory = (): GateMemory => ({ lookedUp: new Set(), blocked: new Set() });
+export const newMemory = (): GateMemory => ({ lookedUp: new Set(), blocked: new Set(), unindexed: new Set(), defined: new Map() });
+
+/** Last segment of a qualified name, lower-cased: what the index is keyed by. */
+export const leafOf = (symbol: string): string => symbol.toLowerCase().split(/::|\.|#|->/).pop()!;
 
 const known = (symbol: string, mem: GateMemory) => {
 	const s = symbol.toLowerCase();
+	if (mem.unindexed.has(leafOf(s))) return true;
 	if (mem.lookedUp.has(s)) return true;
 	const last = s.split(/::|\.|#|->/).pop()!;
 	return mem.lookedUp.has(last);
 };
 
+/**
+ * Does a `codegraph_search` answer define `symbol`? Reads the `**name** (kind)` headings and
+ * compares the last path segment, case-insensitively.
+ */
+export function indexDefines(searchText: string, symbol: string): boolean {
+	return definitionsIn(searchText, symbol).length > 0;
+}
+
+/** Where a `codegraph_search` answer defines `symbol`: `path:line (kind)`, at most `max`. */
+export function definitionsIn(searchText: string, symbol: string, max = 5): string[] {
+	const leaf = leafOf(symbol);
+	const out: string[] = [];
+	for (const m of searchText.matchAll(/^\*\*(.+?)\*\* \(([^)\n]*)\)[ \t]*\n([^\n`*]*)/gm)) {
+		if (m[1]!.toLowerCase() !== leaf) continue;
+		const at = m[3]!.trim();
+		out.push(at ? `${at} (${m[2]})` : `(${m[2]})`);
+		if (out.length >= max) break;
+	}
+	return out;
+}
+
+/** Does every search name only files (not directories), so it reads code already pinned down? */
+const onlyNamedFiles = (s: Search): boolean => s.paths.length > 0 && s.paths.every((p) => extOf(p) !== undefined && !/[*?{[]/.test(p));
+
+/** Symbols a search set would be gated on (not yet looked up, not known to be text). */
+export function candidateSymbols(searches: Search[], mem: GateMemory): string[] {
+	const out = new Set<string>();
+	for (const s of searches) {
+		if (s.files || targetsOnlyNonCode(s)) continue;
+		for (const sym of symbolsIn(s.pattern) ?? []) if (!known(sym, mem)) out.add(sym);
+	}
+	return [...out];
+}
+
 export function suggestion(symbols: string[]): string {
 	const q = symbols.join(" ");
 	const one = symbols[0]!;
 	return [
+		`codegraph_node({ symbol: "${one}", includeCode: true }) for its source`,
 		`codegraph_search({ query: "${one}" }) for the definition`,
 		`codegraph_callers({ symbol: "${one}" }) for usages`,
 		`codegraph_explore({ query: "${q}" }) for the code around it`,
@@ -313,9 +371,14 @@ export function decide(mode: Mode, searches: Search[], key: string, mem: GateMem
 	if (mode === "off") return { action: "allow" };
 	const symbols = new Set<string>();
 	const names = new Set<string>();
+	let scoped = true;
 	for (const s of searches) {
 		if (targetsOnlyNonCode(s)) continue;
-		for (const sym of (s.files ? fileSymbolIn(s.pattern) : symbolsIn(s.pattern)) ?? []) if (!known(sym, mem)) (s.files ? names : symbols).add(sym);
+		for (const sym of (s.files ? fileSymbolIn(s.pattern) : symbolsIn(s.pattern)) ?? []) {
+			if (known(sym, mem)) continue;
+			(s.files ? names : symbols).add(sym);
+			if (!s.files && !onlyNamedFiles(s)) scoped = false;
+		}
 	}
 	if (symbols.size === 0 && names.size === 0) return { action: "allow" };
 	if (symbols.size === 0) {
@@ -326,8 +389,14 @@ export function decide(mode: Mode, searches: Search[], key: string, mem: GateMem
 		};
 	}
 	const list = [...symbols];
-	const hint = `"${list.join('", "')}" ${list.length === 1 ? "looks like a symbol" : "look like symbols"}: CodeGraph answers this structurally. Use ${suggestion(list)}.`;
-	if (mode === "nudge") return { action: "nudge", hint: `[codegraph] ${hint}` };
+	const where = list.flatMap((sym) => {
+		const at = mem.defined.get(leafOf(sym));
+		return at && at.length > 0 ? [`${sym} is defined at ${at.join(", ")}`] : [];
+	});
+	const found = where.length > 0 ? ` ${where.join("; ")}.` : "";
+	const hint = `"${list.join('", "')}" ${list.length === 1 ? "looks like a symbol" : "look like symbols"}: CodeGraph answers this structurally.${found} Use ${suggestion(list)}.`;
+	// A search inside named files reads code the agent already pinned down: hint, do not block.
+	if (mode === "nudge" || scoped) return { action: "nudge", hint: `[codegraph] ${hint}` };
 	if (mem.blocked.has(key)) return { action: "allow", override: true };
 	mem.blocked.add(key);
 	return {

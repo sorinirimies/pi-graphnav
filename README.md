@@ -33,6 +33,13 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) extension.
   phrases, string literals or in docs and config (`*.md`, `--type yaml`, …) are never touched,
   nor symbols already looked up with CodeGraph. Searches a codemode script makes with literal
   `tools.bash({ command })` / `tools.grep({ pattern })` are gated the same way.
+  A pattern only counts as a symbol when it has code shape (`parseConfig`, `ParseConfig`,
+  `start_scan`, `Foo::new`) or symbol syntax (`fn summary`, `summary(`); plain words like
+  `summary`, `cache` or `Success` are text. Before blocking, the gate asks the index (one
+  `codegraph_search`, 2 s limit, fails open) and lets the search through when the index does
+  not define the name. When it does, the block message already says where (`path:line
+  (kind)`), so one blocked call still answers the question. A search inside named files
+  (`rg start_scan src/app.rs`) is only nudged: the agent has already found the code.
 * **Nudges file-name lookups.** `fd UserService`, `find . -name '*ParseConfig*'` and pi's `find`
   tool with a camelCase or snake_case name run, with a hint to `codegraph_search` (never blocked).
 * **Hints after blind reading.** Reading several source files before any CodeGraph call adds
