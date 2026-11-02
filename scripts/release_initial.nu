@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# CodeGraph — First release: tag the version already in package.json (no bump)
+# pi-graphnav — First release: tag the version already in package.json (no bump)
 # ──────────────────────────────────────────────────────────────────────────────
 # Refuses a dirty tree or an existing tag (local or on origin); regenerates the
 # changelog for the tag, commits it if it changed, tags. Pushing is the caller's.
@@ -25,7 +25,7 @@ def main [] {
     ^git-cliff --output CHANGELOG.md --tag $tag
     ^git add CHANGELOG.md
     if (do { ^git diff --cached --quiet } | complete | get exit_code) != 0 {
-        ^git commit -q -m $"chore: release ($tag)"
+        ^git commit -q -m $"chore: release ($tag | str substring 1..)"
     }
     ^git tag -a $tag -m $"Release ($tag)"
     print $"(ansi green)✓(ansi reset) tagged ($tag)"

@@ -1,0 +1,9 @@
+# Dependency policy, checked by scripts/ci/deps_policy.nu (the TypeScript cargo-deny):
+# licenses every package must use (SPDX ids), registries packages may come from,
+# banned package names, and license exceptions (package name -> reason).
+{
+    licenses: [MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC 0BSD Unlicense CC0-1.0 BlueOak-1.0.0 Python-2.0 Zlib]
+    registries: ["https://registry.npmjs.org/"]
+    bans: []
+    exceptions: {}
+}

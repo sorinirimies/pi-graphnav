@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── CodeGraph · test_workflows.nu ────────────────────────────────────
+# ── pi-graphnav · test_workflows.nu ────────────────────────────────────
 # GitHub and Gitea run the same CI: every workflow exists on both hosts (except GitHub's
 # Dependabot helpers and Gitea's mirror, which keeps main and tags in step), the nightlies
 # keep their schedules, the justfile can start each nightly on demand, and all scripting
@@ -63,6 +63,16 @@ def "test workflows: deps updates run the full gate before pushing" [] {
     assert ($raw | str contains "nu scripts/ci/quality_gate.nu") "runs the gate"
     assert ($raw | str contains "nu scripts/ci/deps_update.nu update") "updates via deps_update.nu"
     assert ($raw | str contains "cancel-in-progress: false") "never cancels mid-push"
+}
+
+def "test workflows: a release can be cut from CI" [] {
+    let wf = open (root | path join ".github" "workflows" "release.yml")
+    assert equal ($wf.on.workflow_dispatch.inputs.bump.options) ["patch" "minor" "major" "current"]
+    let runs = $wf.jobs.release.steps | get -o run | compact
+    let at = {|cmd| $runs | enumerate | where {|r| $r.item | str contains $cmd } | get 0.index }
+    assert ((do $at "quality_gate.nu") < (do $at "release_prepare.nu")) "the gate runs before the bump"
+    assert ((do $at "release_prepare.nu") < (do $at "npm_publish.nu")) "the tag exists before publishing"
+    assert (open --raw (root | path join "justfile") | str contains "release-ci bump=")
 }
 
 def "test workflows: the fuzz workflow runs the fuzz script" [] {

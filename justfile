@@ -67,8 +67,12 @@ fuzz iterations="5000": _check-bun
 audit: _check-bun
     bun audit
 
+# Licenses, sources and bans of every dependency (deps-policy.nuon)
+deps-policy: _check-bun
+    nu scripts/ci/deps_policy.nu
+
 # Security + fuzz locally, like the nightly workflows
-nightly-local: audit fuzz
+nightly-local: audit deps-policy fuzz
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
@@ -142,6 +146,11 @@ release-preview: _check-git-cliff
 # Dry-run the npm publish
 publish-dry: check
     nu scripts/ci/npm_publish.nu --dry-run
+
+# Release from CI: gate, bump (patch | minor | major | current), changelog, tag, push, publish
+release-ci bump="patch":
+    gh workflow run release.yml --field bump={{ bump }}
+    @print "✅ started: gh run watch (gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 # Bump (patch | minor | major | X.Y.Z): gate, package.json + CHANGELOG, commit, tag. Does not push.
 bump kind: _check-git-cliff

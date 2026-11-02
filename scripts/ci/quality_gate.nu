@@ -5,10 +5,11 @@
 #   1. tsc --noEmit          (strict type check against pi's real types)
 #   2. bun test
 #   3. npm pack --dry-run    (the tarball has every extension file, and no tests)
-#   4. nu script tests
+#   4. dependency policy     (licenses, sources, bans: deps-policy.nuon)
+#   5. nu script tests
 #
 # Usage:
-#   nu scripts/ci/quality_gate.nu [--skip-typecheck] [--skip-test] [--skip-pack] [--skip-nu]
+#   nu scripts/ci/quality_gate.nu [--skip-typecheck] [--skip-test] [--skip-pack] [--skip-deps] [--skip-nu]
 # Exit code 0 when everything passed, 1 otherwise.
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ def run_step [label: string, cmd: closure]: nothing -> bool {
     }
 }
 
-def main [--skip-typecheck, --skip-test, --skip-pack, --skip-nu] {
+def main [--skip-typecheck, --skip-test, --skip-pack, --skip-deps, --skip-nu] {
     print $"(ansi cyan)══════════════════════════ Quality gate ══════════════════════════(ansi reset)"
     mut ok = true
 
@@ -72,6 +73,9 @@ def main [--skip-typecheck, --skip-test, --skip-pack, --skip-nu] {
                 print $"(ansi green)  ✔ tarball has ($files | length) files(ansi reset)"
             }
         }
+    }
+    if not $skip_deps {
+        if not (run_step "dependency policy" { ^nu scripts/ci/deps_policy.nu }) { $ok = false }
     }
     if not $skip_nu {
         if not (run_step "nu scripts/tests/run_all.nu" { ^nu scripts/tests/run_all.nu }) { $ok = false }

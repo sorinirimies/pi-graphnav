@@ -1,7 +1,13 @@
 name: Release
 
-# Publishes the package to npm when a vX.Y.Z tag is pushed (or dispatched).
+# Publishes the package to npm and creates the GitHub release. Three ways in:
+#   * push a vX.Y.Z tag (just release <kind>);
+#   * Actions → Release → Run workflow with a bump (just release-ci <bump>): runs the gate,
+#     bumps package.json + CHANGELOG, commits, tags, pushes main and the tag, publishes.
+#     `current` tags the version already in package.json (the first release);
+#   * Run workflow with an existing tag: publishes it again.
 # Safe to re-run: publishing is idempotent (skipped when the version is on npm).
+# Gitea's mirror.yml copies the new commit and tag and runs its own release.yml.
 #
 # Secret: NPM_TOKEN — an npm granular access token with "bypass 2FA" and publish
 # rights on this package.
@@ -11,9 +17,15 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
+      bump:
+        description: "New version: patch, minor, major, or current (tag package.json as is: the first release)"
+        type: choice
+        options: [patch, minor, major, current]
+        default: patch
       tag:
-        description: "Tag to release (e.g. v0.3.1)"
-        required: true
+        description: "Or publish this existing tag again (e.g. v0.3.1); the bump is then ignored"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -50,17 +62,27 @@ jobs:
         with:
           tool: git-cliff
 
+      - run: bun install --frozen-lockfile
+
+      - name: Quality gate
+        run: nu scripts/ci/quality_gate.nu
+
+      # A dispatched bump commits, tags and pushes here; otherwise the tag already exists.
+      - name: Tag to release
+        id: prepare
+        run: nu scripts/ci/release_prepare.nu
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag }}
+          BUMP: ${{ inputs.bump }}
+
       # The tag must be vX.Y.Z and equal the version in package.json.
       - name: Validate tag
         id: tag
         run: nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
-
-      - run: bun install --frozen-lockfile
-
-      - name: Quality gate
-        run: nu scripts/ci/quality_gate.nu
+          TAG: ${{ steps.prepare.outputs.tag }}
 
       - name: Publish to npm
         run: nu scripts/ci/npm_publish.nu --provenance

@@ -5,9 +5,9 @@ on:
     - cron: "0 3 * * *"
   push:
     branches: [main]
-    paths: ["bun.lock", "package.json"]
+    paths: ["bun.lock", "package.json", "deps-policy.nuon"]
   pull_request:
-    paths: ["bun.lock", "package.json"]
+    paths: ["bun.lock", "package.json", "deps-policy.nuon"]
   workflow_dispatch:
 
 permissions:
@@ -15,11 +15,18 @@ permissions:
 
 jobs:
   audit:
-    name: bun audit
+    name: bun audit + dependency policy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
       - name: Audit dependencies (fails on any known vulnerability)
         run: bun audit
+      - name: Check licenses, sources and bans (deps-policy.nuon)
+        run: nu scripts/ci/deps_policy.nu
