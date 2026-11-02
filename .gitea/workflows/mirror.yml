@@ -1,0 +1,55 @@
+name: Mirror GitHub
+
+# GitHub is the single source of truth for main: Dependabot, auto-merge, the nightly
+# dependency update and the Gitea action bumps all commit THERE (this LAN host is not
+# reachable from GitHub's runners, so GitHub cannot push here). This job brings every
+# new commit and tag over, so the two hosts never diverge again (they did while each ran
+# its own nightly).
+#
+#   Gitea behind GitHub  -> fast-forward main, push the new tags, start release.yml for
+#                           each new tag (Gitea release page; the npm publish is idempotent)
+#   equal / Gitea ahead  -> nothing (ahead = a local push GitHub has not seen yet)
+#   diverged             -> FAIL: someone committed to one host only; merge by hand
+#
+# A local `git push origin` reaches both hosts anyway; this only covers commits made on
+# GitHub itself.
+
+on:
+  schedule:
+    - cron: "30 * * * *" # hourly; cheap (a fetch), and the 02:00 UTC GitHub nightly lands by 02:30
+  workflow_dispatch:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Fast-forward from GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          token: ${{ secrets.GITEA_TOKEN || github.token }}
+          fetch-depth: 0
+
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
+
+      - name: Fetch GitHub
+        run: nu scripts/ci/mirror.nu fetch
+
+      - name: Fast-forward main and push new tags
+        id: sync
+        run: nu scripts/ci/mirror.nu sync
+
+      - name: Trigger release workflow for new tags
+        if: steps.sync.outputs.tags != ''
+        run: nu scripts/ci/mirror.nu dispatch "$TAGS"
+        env:
+          TAGS: ${{ steps.sync.outputs.tags }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN || github.token }}

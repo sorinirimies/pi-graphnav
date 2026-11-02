@@ -1,0 +1,40 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "30 4 * * *" # GitHub runs at 04:00
+  push:
+    branches: [main]
+    paths: ["tests/fuzz.test.ts", "extensions/**"]
+  pull_request:
+    paths: ["tests/fuzz.test.ts", "extensions/**"]
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: Iterations per property
+        default: "200000"
+      seed:
+        description: Seed (empty = random)
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: randomised robustness tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
+      - run: bun install --frozen-lockfile
+      - name: Fuzz (a failure prints the seed that reproduces it)
+        run: nu scripts/ci/fuzz.nu --iterations "$ITERATIONS" --seed "$SEED" --event "$EVENT"
+        env:
+          ITERATIONS: ${{ github.event.inputs.iterations }}
+          SEED: ${{ github.event.inputs.seed }}
+          EVENT: ${{ github.event_name }}

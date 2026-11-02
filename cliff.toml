@@ -1,0 +1,51 @@
+# git-cliff configuration — https://git-cliff.org/docs/configuration
+#
+# Commits must follow Conventional Commits to appear in the changelog:
+#     <type>(<optional scope>)!: <summary>
+# Types: feat fix perf refactor docs test build ci chore. `chore(deps)` and release
+# commits are skipped. Preview: `just changelog-preview`.
+
+[changelog]
+header = """
+# Changelog
+
+Generated from [Conventional Commits](https://www.conventionalcommits.org) by
+[git-cliff](https://git-cliff.org). Do not edit by hand.
+
+"""
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/sorinirimies/pi-codegraph/releases/tag/{{ version }}) — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\\n") | first | trim | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/sorinirimies/pi-codegraph/commit/{{ commit.id }}))
+{%- endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"
+commit_parsers = [
+  { message = "^chore: release", skip = true },
+  { message = "^chore\\(deps\\)", skip = true },
+  { message = "^feat", group = "<!-- 0 -->✨ Features" },
+  { message = "^fix", group = "<!-- 1 -->🐛 Fixes" },
+  { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+  { message = "^refactor", group = "<!-- 3 -->♻️ Refactor" },
+  { message = "^docs", group = "<!-- 4 -->📚 Docs" },
+  { message = "^test", group = "<!-- 5 -->🧪 Tests" },
+  { message = "^(build|ci)", group = "<!-- 6 -->🔧 Build & CI" },
+  { message = "^chore", group = "<!-- 7 -->🧹 Chores" },
+]

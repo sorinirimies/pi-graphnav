@@ -1,0 +1,52 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Gitea workflow actions — kept up to date from here (Gitea has no Dependabot)
+# ──────────────────────────────────────────────────────────────────────────────
+# Dependabot only watches .github/workflows. This job moves the sha pins in
+# .gitea/workflows to the newest release of the SAME major (scripts/ci/gitea_actions.nu)
+# and commits straight to main as `ci(deps): …` (not a release). A new major is only
+# reported: act_runner may lack the node runtime it needs. actions/checkout and the
+# artifact actions stay pinned on purpose.
+#
+# GITHUB_TOKEN may push this: it only changes .gitea/, never .github/workflows. The
+# commit reaches Gitea through its hourly mirror job, where Gitea's CI runs it.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Gitea Actions Update
+
+on:
+  schedule:
+    - cron: "15 3 * * 1" # Mondays 03:15 UTC, after the nightly and next to Dependabot
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Shares the nightly's group: never two jobs pushing to main at once.
+concurrency:
+  group: deps-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Bump .gitea/workflows pins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
+
+      - name: Bump pins within their major
+        id: bump
+        run: nu scripts/ci/gitea_actions.nu --output "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.bump.outputs.changed == 'true'
+        run: 'nu scripts/ci/commit_push.nu "ci(deps): bump Gitea workflow actions" .gitea/workflows --body "$SUMMARY"'
+        env:
+          SUMMARY: ${{ steps.bump.outputs.summary }}

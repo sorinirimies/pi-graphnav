@@ -1,0 +1,92 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Auto-merge library updates — after CI is green, then ship a patch
+# ──────────────────────────────────────────────────────────────────────────────
+# Dependabot keeps the GitHub Actions in .github/workflows up to date (see dependabot.yml).
+# npm dependencies are updated by the nightly job (deps-update.yml), which commits straight
+# to main; the actions in .gitea/workflows by gitea-actions.yml.
+#
+# This workflow merges a Dependabot PR only AFTER the CI workflow finished successfully
+# for that exact commit (this repo has no branch protection, so `gh pr merge --auto` would
+# merge immediately). Patch and minor updates merge on their own; a major update, or one
+# that cannot be classified, waits for a person (scripts/ci/update_type.nu).
+#
+# Action bumps always change .github/workflows/*, which GITHUB_TOKEN may not merge: set the
+# GH_PAT secret (classic PAT, `repo` + `workflow` scopes), or every merge fails loudly.
+#
+# After a merge it starts the nightly workflow with release=true. A `ci(deps)` action bump
+# alone is not released (scripts/ci/unreleased.nu); the nightly ships a patch only when a
+# runtime dependency moved or feat/fix/perf commits are waiting.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Auto-merge library updates
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  merge:
+    name: Merge after CI, then release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    steps:
+      # The default branch: trusted scripts, never the PR's code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
+
+      - name: Find the pull request
+        id: pr
+        run: nu scripts/ci/auto_merge.nu find "$REPO" "$HEAD_BRANCH" "$HEAD_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Classify the update
+        id: kind
+        if: steps.pr.outputs.number != ''
+        run: nu scripts/ci/auto_merge.nu classify "$REPO" "$NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+
+      # GITHUB_TOKEN cannot merge a PR that changes .github/workflows/* (it lacks the
+      # `workflows` permission): use the GH_PAT secret (classic PAT, `repo` + `workflow`).
+      - name: Merge (squash)
+        id: merge
+        if: steps.kind.outputs.automerge == 'true'
+        run: nu scripts/ci/auto_merge.nu merge "$REPO" "$NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+
+      - name: Needs a human
+        if: steps.kind.outputs.automerge == 'false'
+        run: echo "::notice::PR ${NUMBER} is a ${KIND} update, so it is not auto-merged. Review it by hand."
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+          KIND: ${{ steps.kind.outputs.type }}
+
+      # Starts the nightly: it ships a patch when there is something releasable.
+      - name: Run the nightly
+        if: steps.merge.outputs.merged == 'true'
+        run: gh workflow run deps-update.yml --repo "$REPO" -f release=true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}

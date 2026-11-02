@@ -1,0 +1,8 @@
+# Coverage is on for every `bun test` (locally, CI, nightly and release gate).
+# The run FAILS when coverage drops below these thresholds.
+[test]
+preload = ["./tests/setup.ts"]
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageThreshold = { lines = 0.95, functions = 0.95 }

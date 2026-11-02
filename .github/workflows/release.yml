@@ -1,0 +1,74 @@
+name: Release
+
+# Publishes the package to npm when a vX.Y.Z tag is pushed (or dispatched).
+# Safe to re-run: publishing is idempotent (skipped when the version is on npm).
+#
+# Secret: NPM_TOKEN — an npm granular access token with "bypass 2FA" and publish
+# rights on this package.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.3.1)"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write # npm provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Test, publish, release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install nushell
+        uses: hustcer/setup-nu@eacad52a4634c4f8d17a94916f93be6856861b9c # v3
+        with:
+          version: "0.116.1"
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          tool: git-cliff
+
+      # The tag must be vX.Y.Z and equal the version in package.json.
+      - name: Validate tag
+        id: tag
+        run: nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Quality gate
+        run: nu scripts/ci/quality_gate.nu
+
+      - name: Publish to npm
+        run: nu scripts/ci/npm_publish.nu --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        run: nu scripts/ci/github_release.nu "$TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}

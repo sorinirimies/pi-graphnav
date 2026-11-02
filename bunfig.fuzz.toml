@@ -1,0 +1,4 @@
+# For `bun test tests/fuzz.test.ts` on its own: the main bunfig.toml enforces the coverage
+# thresholds, which a single test file can never meet.
+[test]
+preload = ["./tests/setup.ts"]
