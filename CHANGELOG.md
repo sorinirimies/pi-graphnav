@@ -3,6 +3,13 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.2.1](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.1) — 2026-11-02
+
+
+### 🐛 Fixes
+
+- **ci:** A 409 from the other host publishing the same version first is not a failure ([`fa18a80`](https://github.com/sorinirimies/pi-graphnav/commit/fa18a80d0690d3d8423076f096e0ac732bd0c96a))
+- **ci:** A 409 from the other host publishing the same version first is not a failure; add release-gitea-starscream and pull-gitea-starscream recipes ([`4a38220`](https://github.com/sorinirimies/pi-graphnav/commit/4a38220d1756c41e97f7d30501a1bfa2ad2f1188))
 ## [0.2.0](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.0) — 2026-11-02
 
 
