@@ -50,6 +50,12 @@ export function statusReport(s: Status): string {
 		.join("\n");
 }
 
+/** On Windows the CLI runs through a shell, which reports a missing program itself: map that to 127 too. */
+export function exitCode(code: number | null, stderr: string): number {
+	if (code === 9009 || (code !== 0 && /is not recognized as an internal or external command|command not found/i.test(stderr))) return 127;
+	return code ?? 1;
+}
+
 /** Runs the CodeGraph CLI. Exit code 127 means it is not installed. */
 export const defaultRunner: Runner = (args, cwd) =>
 	new Promise((done) => {
@@ -59,7 +65,7 @@ export const defaultRunner: Runner = (args, cwd) =>
 		child.stdout?.on("data", (c) => (stdout += String(c)));
 		child.stderr?.on("data", (c) => (stderr += String(c)));
 		child.on("error", (e: NodeJS.ErrnoException) => done({ code: e.code === "ENOENT" ? 127 : 1, stdout, stderr: stderr || e.message }));
-		child.on("close", (code) => done({ code: code ?? 1, stdout, stderr }));
+		child.on("close", (code) => done({ code: exitCode(code, stderr), stdout, stderr }));
 	});
 
 /** The searches a tool call performs, if it is one the gate looks at. */

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultRunner, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/codegraph.ts";
+import { defaultRunner, exitCode, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/codegraph.ts";
 import { type Config, configPath, DEFAULT_CONFIG } from "../extensions/core/config.ts";
 import type { ServerProcess, Spawner } from "../extensions/core/mcp.ts";
 import type { Runner } from "../extensions/core/project.ts";
@@ -428,6 +428,15 @@ describe("defaultRunner", () => {
 		} finally {
 			process.env.PATH = path;
 		}
+	});
+
+	test("exitCode: a shell's \"not found\" is 127, anything else passes through", () => {
+		expect(exitCode(9009, "")).toBe(127);
+		expect(exitCode(1, "'codegraph' is not recognized as an internal or external command,")).toBe(127);
+		expect(exitCode(127, "sh: codegraph: command not found")).toBe(127);
+		expect(exitCode(0, "command not found")).toBe(0);
+		expect(exitCode(2, "boom")).toBe(2);
+		expect(exitCode(null, "")).toBe(1);
 	});
 
 	test("a missing CLI exits with 127", async () => {

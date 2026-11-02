@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { CodeGraphServer, defaultSpawner, MAX_STDERR, sanitize, type ServerProcess, type Spawner } from "../extensions/core/mcp.ts";
 
 type Msg = { jsonrpc: string; id?: number; method: string; params?: any };
@@ -76,7 +77,7 @@ describe("CodeGraphServer", () => {
 		const methods = procs[0]!.received.map((m) => m.method);
 		expect(methods).toEqual(["initialize", "notifications/initialized", "tools/call", "tools/call"]);
 		const init = procs[0]!.received[0]!.params;
-		expect(init.rootUri).toBe("file:///work/my-repo");
+		expect(init.rootUri).toBe(pathToFileURL("/work/my-repo").href);
 		expect(init.workspaceFolders[0].name).toBe("my-repo");
 	});
 
