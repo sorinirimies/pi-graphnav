@@ -3,6 +3,12 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.2.2](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.2) — 2026-11-02
+
+
+### 🐛 Fixes
+
+- **gate:** Gate only code-shaped symbols the index defines, and say where they are ([`6e6eb68`](https://github.com/sorinirimies/pi-graphnav/commit/6e6eb680248fce60f973b3fbcf772f8abe416604))
 ## [0.2.1](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.1) — 2026-11-02
 
 
