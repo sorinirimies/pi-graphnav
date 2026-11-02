@@ -53,6 +53,10 @@ check: _check-bun
 pack:
     npm pack --dry-run
 
+# Render the README demo GIFs (all, or one: just vhs overview); needs vhs
+vhs name="":
+    nu scripts/vhs.nu record {{ name }}
+
 # ── Fuzz & security ───────────────────────────────────────────────────────────
 
 # Randomised robustness tests (e.g. just fuzz 200000)

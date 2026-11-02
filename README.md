@@ -34,6 +34,24 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) extension.
 Needs the CodeGraph CLI: `npm i -g @colbymchenry/codegraph`. The project is the nearest
 directory with `.codegraph/`, else the git work tree; never your home directory.
 
+## Demos
+
+A repo without an index: indexed in the background, then a symbol `rg` is blocked and the
+answer comes from `codegraph_search` and `codegraph_callers`.
+
+![Overview: background indexing, a blocked rg, CodeGraph answers](examples/vhs/generated/overview.gif)
+
+`nudge` mode: the search runs, and its output points at CodeGraph.
+
+![Nudge mode: rg runs and its output carries the CodeGraph hint](examples/vhs/generated/nudge.gif)
+
+The `/codegraph` command: status, mode, off/on, sync.
+
+![The /codegraph command](examples/vhs/generated/commands.gif)
+
+Recorded with [VHS](https://github.com/charmbracelet/vhs) against a throw-away sample project and a
+scripted local model (`just vhs`, `scripts/vhs.nu`, `examples/vhs/`): a real pi with only this plugin.
+
 ## Install
 
 ```bash
@@ -86,6 +104,7 @@ Layout:
 | `extensions/core/config.ts`, `extensions/command/parse.ts` | settings, `/codegraph` parsing |
 | `tests/` | `bun test`: one file per module, `extension` (hooks), `fuzz` (randomised properties) |
 | `scripts/` | Nushell only, each with a test in `scripts/tests/` |
+| `examples/vhs/` | demo tapes, the scripted model, the rendered GIFs |
 | `.github/`, `.gitea/` | CI, release, nightlies on both hosts |
 
 Releases: `just release patch` bumps `package.json`, regenerates `CHANGELOG.md` with git-cliff, tags and
