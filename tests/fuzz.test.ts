@@ -8,7 +8,7 @@
 // One property per parser or pure function: assert what must ALWAYS hold, not one example.
 import { describe, expect, it } from "bun:test";
 import { parseCommand } from "../extensions/command/parse.ts";
-import { MODES, sanitizeConfig } from "../extensions/core/config.ts";
+import { MODES, STATUS_SHOWS, sanitizeConfig } from "../extensions/core/config.ts";
 import { findSearches, splitCommands, symbolsIn } from "../extensions/core/gate.ts";
 import { parseStatus } from "../extensions/core/project.ts";
 import { normalizeFilesPath } from "../extensions/core/tools.ts";
@@ -71,7 +71,7 @@ describe("fuzz", () => {
 				? JSON.parse(
 						JSON.stringify({
 							enabled: r() < 0.5 ? text(r) : r() < 0.5,
-							showStatus: r() < 0.5,
+							showStatus: r() < 0.3 ? r() < 0.5 : r() < 0.5 ? STATUS_SHOWS[Math.floor(r() * 3)] : text(r),
 							mode: r() < 0.5 ? MODES[Math.floor(r() * 3)] : text(r),
 							autoInit: r() < 0.5 ? 1 : true,
 							readHintAfter: r() * 1000 - 300,
@@ -80,7 +80,8 @@ describe("fuzz", () => {
 					)
 				: text(r);
 		const c = sanitizeConfig(raw);
-		for (const k of ["enabled", "showStatus", "autoInit", "autoSync", "watch"] as const) expect(typeof c[k]).toBe("boolean");
+		expect(STATUS_SHOWS).toContain(c.showStatus);
+		for (const k of ["enabled", "autoInit", "autoSync", "watch"] as const) expect(typeof c[k]).toBe("boolean");
 		expect(MODES).toContain(c.mode);
 		expect(Number.isInteger(c.readHintAfter) && c.readHintAfter >= 0 && c.readHintAfter <= 100).toBe(true);
 		expect(Number.isInteger(c.timeoutMs) && c.timeoutMs >= 1000 && c.timeoutMs <= 600_000).toBe(true);

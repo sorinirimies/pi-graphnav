@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultRunner, exitCode, LARGE_READ_HINT, LARGE_READ_LINES, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/graphnav.ts";
+import { defaultRunner, exitCode, LARGE_READ_HINT, LARGE_READ_LINES, READ_HINT, type Status, searchesOf, showsStatus, statusReport, statusText } from "../extensions/graphnav.ts";
 import { type Config, configPath, DEFAULT_CONFIG } from "../extensions/core/config.ts";
 import type { ServerProcess, Spawner } from "../extensions/core/mcp.ts";
 import type { Runner } from "../extensions/core/project.ts";
@@ -210,9 +210,29 @@ describe("session_start", () => {
 		expect(s.ctx.status.codegraph).toBe("");
 	});
 
-	test("showStatus off hides the status line", async () => {
-		const s = await start({ config: { showStatus: false }, wait: false });
+	test("showsStatus: problems means indexing, missing, error or unavailable", () => {
+		const st = (state: Status["state"], unavailable = false) => ({ config: DEFAULT_CONFIG, state, unavailable, blocked: 0, nudged: 0, followed: 0, overridden: 0 }) as Status;
+		for (const state of ["indexing", "missing", "error"] as const) expect(showsStatus("problems", st(state))).toBe(true);
+		for (const state of ["none", "checking", "ready"] as const) expect(showsStatus("problems", st(state))).toBe(false);
+		expect(showsStatus("problems", st("ready", true))).toBe(true);
+		expect(showsStatus("always", st("ready"))).toBe(true);
+		expect(showsStatus("never", st("error"))).toBe(false);
+	});
+
+	test("showStatus never hides the status line", async () => {
+		const s = await start({ config: { showStatus: "never" }, wait: false });
 		await Bun.sleep(5);
+		expect(s.ctx.status.codegraph).toBe("");
+	});
+
+	test("showStatus problems: hidden when ready, shown when the index needs attention", async () => {
+		const s = await start({ config: { showStatus: "problems" } });
+		expect(s.ctx.status.codegraph).toBe("");
+		await s.cmd("statusline always");
+		expect(s.ctx.status.codegraph).toBe("codegraph: ready · 3 files · enforce");
+		expect(s.ctx.notes.at(-1)![0]).toBe("codegraph: status line always");
+		expect(JSON.parse(readFileSync(configPath(), "utf8")).showStatus).toBe("always");
+		await s.cmd("statusline never");
 		expect(s.ctx.status.codegraph).toBe("");
 	});
 

@@ -9,6 +9,7 @@ import {
 	DEFAULT_CONFIG,
 	loadConfig,
 	MODES,
+	STATUS_SHOWS,
 	projectConfigPath,
 	readConfig,
 	readProjectConfig,
@@ -26,7 +27,7 @@ describe("sanitizeConfig", () => {
 	test("keeps valid values", () => {
 		const c: Config = {
 			enabled: false,
-			showStatus: false,
+			showStatus: "never",
 			mode: "nudge",
 			autoInit: false,
 			autoSync: false,
@@ -36,6 +37,13 @@ describe("sanitizeConfig", () => {
 		};
 		expect(sanitizeConfig(c)).toEqual(c);
 		for (const mode of MODES) expect(sanitizeConfig({ mode }).mode).toBe(mode);
+	});
+
+	test("showStatus: always | problems | never, and the 0.2 booleans", () => {
+		for (const v of STATUS_SHOWS) expect(sanitizeConfig({ showStatus: v }).showStatus).toBe(v);
+		expect(sanitizeConfig({ showStatus: true }).showStatus).toBe("always");
+		expect(sanitizeConfig({ showStatus: false }).showStatus).toBe("never");
+		expect(sanitizeConfig({ showStatus: "sometimes" }).showStatus).toBe("always");
 	});
 
 	test("defaults wrong types and unknown modes", () => {

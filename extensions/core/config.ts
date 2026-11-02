@@ -11,11 +11,22 @@ import { join } from "node:path";
 export type Mode = "enforce" | "nudge" | "off";
 export const MODES: readonly Mode[] = ["enforce", "nudge", "off"];
 
+/** Status line: always, only when something needs attention (indexing, missing, error, unavailable), or never. */
+export type StatusShow = "always" | "problems" | "never";
+export const STATUS_SHOWS: readonly StatusShow[] = ["always", "problems", "never"];
+
+/** `showStatus` from a config file: one of STATUS_SHOWS, or the 0.2 booleans (true = always, false = never). */
+export function parseStatusShow(v: unknown): StatusShow | undefined {
+	if (v === true) return "always";
+	if (v === false) return "never";
+	return STATUS_SHOWS.includes(v as StatusShow) ? (v as StatusShow) : undefined;
+}
+
 export interface Config {
 	/** Master switch: when false the extension adds no guidance, gates nothing and indexes nothing. */
 	enabled: boolean;
-	/** Show the status line entry. */
-	showStatus: boolean;
+	/** When to show the status line entry. */
+	showStatus: StatusShow;
 	/** Symbol searches with rg/grep: block once (`enforce`), only add a hint (`nudge`) or leave alone (`off`). */
 	mode: Mode;
 	/** Create the index (`codegraph init`) for a git repo that has none. */
@@ -32,7 +43,7 @@ export interface Config {
 
 export const DEFAULT_CONFIG: Config = {
 	enabled: true,
-	showStatus: true,
+	showStatus: "always",
 	mode: "enforce",
 	autoInit: true,
 	autoSync: true,
@@ -49,7 +60,7 @@ export function sanitizeConfig(raw: unknown): Config {
 	const d = DEFAULT_CONFIG;
 	return {
 		enabled: typeof r.enabled === "boolean" ? r.enabled : d.enabled,
-		showStatus: typeof r.showStatus === "boolean" ? r.showStatus : d.showStatus,
+		showStatus: parseStatusShow(r.showStatus) ?? d.showStatus,
 		mode: MODES.includes(r.mode as Mode) ? (r.mode as Mode) : d.mode,
 		autoInit: typeof r.autoInit === "boolean" ? r.autoInit : d.autoInit,
 		autoSync: typeof r.autoSync === "boolean" ? r.autoSync : d.autoSync,

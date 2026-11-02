@@ -83,6 +83,7 @@ pi install npm:pi-graphnav
 | `/codegraph` or `/codegraph status` | project, index state, mode, blocked/nudged counts |
 | `/codegraph [on\|off]` | switch it all (remembered across sessions) |
 | `/codegraph mode <mode>` | symbol searches: `enforce` (default), `nudge` or `off` |
+| `/codegraph statusline <when>` | status line: `always` (default), `problems` or `never`; CodeGraph keeps working |
 | `/codegraph sync` | sync the index with changed files |
 | `/codegraph reindex` | rebuild the index from scratch |
 | `/codegraph init` | create the index (for a directory that is not a git repo) |
@@ -92,7 +93,7 @@ Settings live in `<pi agent dir>/codegraph.json` (`PI_CODING_AGENT_DIR`, else `~
 | Key | Default | |
 |---|---|---|
 | `enabled` | `true` | master switch |
-| `showStatus` | `true` | status line entry |
+| `showStatus` | `"always"` | status line entry: `"always"`, `"problems"` (only while indexing, or when the index is missing, failing or unavailable) or `"never"`; `true`/`false` still work |
 | `mode` | `"enforce"` | `enforce`, `nudge` or `off` |
 | `autoInit` | `true` | init a git repo that has no index |
 | `autoSync` | `true` | sync or rebuild a stale index at session start |

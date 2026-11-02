@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { completions, parseCommand } from "./command/parse.ts";
-import { type Config, DEFAULT_CONFIG, type ProjectOverrides, readConfig, readProjectConfig, saveConfig } from "./core/config.ts";
+import { type Config, DEFAULT_CONFIG, type ProjectOverrides, readConfig, readProjectConfig, saveConfig, type StatusShow } from "./core/config.ts";
 import {
 	codemodeSearches,
 	candidateSymbols,
@@ -52,6 +52,13 @@ export interface Status {
 	/** Settings this project overrides (`.pi/codegraph.json`). */
 	overrides?: ProjectOverrides;
 	error?: string;
+}
+
+/** Does the status line show for this setting? `problems`: only when the user may need to act or wait. */
+export function showsStatus(show: StatusShow, s: Status): boolean {
+	if (show === "never") return false;
+	if (show === "always") return true;
+	return !!s.unavailable || s.state === "indexing" || s.state === "missing" || s.state === "error";
 }
 
 export function statusText(s: Status): string {
@@ -170,7 +177,7 @@ export function createExtension(deps: Deps = {}) {
 		const guardNow = new Map<string, Guard>();
 		const unavailable = (root = project?.root) => (root ? (guardNow.get(root)?.open ?? false) : false);
 		const snapshot = (): Status => ({ config, project, state, index, error: lastError, ...counts, unavailable: unavailable(), overrides });
-		const refresh = () => ui?.setStatus("codegraph", config.enabled && config.showStatus ? statusText(snapshot()) : "");
+		const refresh = () => ui?.setStatus("codegraph", config.enabled && showsStatus(config.showStatus, snapshot()) ? statusText(snapshot()) : "");
 
 		const server = (root: string) => {
 			let s = servers.get(root);
@@ -420,6 +427,11 @@ export function createExtension(deps: Deps = {}) {
 					config.mode = base.mode = cmd.mode;
 					await persist();
 					ctx.ui.notify(`codegraph: mode ${cmd.mode}`, "info");
+					return;
+				case "statusline":
+					config.showStatus = base.showStatus = cmd.show;
+					await persist();
+					ctx.ui.notify(`codegraph: status line ${cmd.show}`, "info");
 					return;
 				case "sync":
 				case "reindex":
