@@ -155,6 +155,11 @@ release kind: (bump kind)
 # Bump, tag and push to every remote: starts the Release workflows on both hosts
 release-all kind: (bump kind) push-all
 
+# Bump, tag and push to Gitea only (then just push-all, or the mirror finds the hosts diverged)
+release-gitea-starscream kind: (bump kind)
+    git push --follow-tags gitea-starscream (git branch --show-current)
+    @print "✅ released on Gitea. Next: just push-all, so GitHub gets the release commit too."
+
 # First release of the version already in package.json (no bump), pushed to every remote
 release-initial-all: _check-git-cliff check
     nu scripts/release_initial.nu
@@ -200,6 +205,10 @@ push-all-force:
 # Pull the current branch from GitHub
 pull:
     git pull origin (git branch --show-current)
+
+# Pull the current branch from Gitea Starscream
+pull-gitea-starscream:
+    git pull gitea-starscream (git branch --show-current)
 
 # Pull the current branch from every remote (continues on failure)
 pull-all:
