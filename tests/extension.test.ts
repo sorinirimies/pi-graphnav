@@ -48,7 +48,8 @@ function fakeSpawn() {
 					if (msg.method === "tools/call" && msg.params.arguments.limit === 25) probes.push(msg.params.arguments.query);
 					const reply = (body: unknown) => queueMicrotask(() => proc.stdout.emit("data", `${JSON.stringify({ jsonrpc: "2.0", id: msg.id, ...(body as object) })}\n`));
 					if (msg.method === "initialize") reply({ result: {} });
-					else if (msg.method === "tools/call" && msg.params.arguments.query === "die") queueMicrotask(() => proc.emit("exit", 1));
+					else if (msg.method === "tools/call" && /^die(?:_probe)?$/.test(msg.params.arguments.query)) queueMicrotask(() => proc.emit("exit", 1));
+					else if (msg.method === "tools/call" && msg.params.arguments.query === "hang_probe") return; // never answers
 					else if (msg.method === "tools/call")
 						reply({
 							result:
@@ -85,13 +86,13 @@ async function until(cond: () => boolean, what: string) {
 
 /** Load the extension with fakes and start a session in `cwd` (a fresh repo by default), waiting for indexing. */
 async function start(
-	opts: { config?: Partial<Config>; run?: ReturnType<typeof fakeRun>; cwd?: string; wait?: boolean; breaker?: { threshold: number; resetMs: number } } = {},
+	opts: { config?: Partial<Config>; run?: ReturnType<typeof fakeRun>; cwd?: string; wait?: boolean; breaker?: { threshold: number; resetMs: number }; probeTimeoutMs?: number } = {},
 ) {
 	if (opts.config) writeFileSync(configPath(), JSON.stringify(opts.config));
 	else rmSync(configPath(), { force: true });
 	const runner = opts.run ?? fakeRun();
 	const server = fakeSpawn();
-	const ext = load({ run: runner.run, spawn: server.spawn, breaker: opts.breaker });
+	const ext = load({ run: runner.run, spawn: server.spawn, breaker: opts.breaker, probeTimeoutMs: opts.probeTimeoutMs });
 	const cwd = opts.cwd ?? repo();
 	const ctx = fakeCtx(cwd);
 	await ext.hooks.session_start!({}, ctx);
@@ -608,6 +609,12 @@ describe("0.2: stats, resilience, large reads, project settings", () => {
 	test("a broken index probe fails open to the normal gate", async () => {
 		const s = await start();
 		expect((await s.call("bash", { command: "rg -n fail_probe src" }, "f1"))?.block).toBe(true);
+		expect((await s.call("bash", { command: "rg -n die_probe src" }, "f2"))?.block).toBe(true); // the server died
+	});
+
+	test("a probe that does not answer in time fails open to the normal gate", async () => {
+		const s = await start({ probeTimeoutMs: 20 });
+		expect((await s.call("bash", { command: "rg -n hang_probe src" }, "h1"))?.block).toBe(true);
 	});
 
 	test("a block answered with CodeGraph counts as followed; a re-run as overridden", async () => {

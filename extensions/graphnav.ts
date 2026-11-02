@@ -139,6 +139,8 @@ export interface Deps {
 	run?: Runner;
 	spawn?: Spawner;
 	breaker?: { threshold: number; resetMs: number };
+	/** How long the gate waits for its index probe before failing open (default 2000 ms). */
+	probeTimeoutMs?: number;
 }
 
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
@@ -329,7 +331,7 @@ export function createExtension(deps: Deps = {}) {
 				await Promise.all(
 					unknown.map(async (sym) => {
 						try {
-							const res = await withTimeout(server(root).call("codegraph_search", { query: leafOf(sym), limit: 25, projectPath: root }), 2000);
+							const res = await withTimeout(server(root).call("codegraph_search", { query: leafOf(sym), limit: 25, projectPath: root }), deps.probeTimeoutMs ?? 2000);
 							if (res.isError) return;
 							const at = definitionsIn(resultText(res), sym);
 							if (at.length === 0) mem.unindexed.add(leafOf(sym));
