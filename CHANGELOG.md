@@ -3,6 +3,12 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.3.0](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.0) — 2026-11-02
+
+
+### ✨ Features
+
+- Status line setting always | problems | never, and /codegraph statusline ([`2031ffa`](https://github.com/sorinirimies/pi-graphnav/commit/2031ffa61e80a234d1e02ce540ccdc7bbd9266d8))
 ## [0.2.2](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.2.2) — 2026-11-02
 
 
