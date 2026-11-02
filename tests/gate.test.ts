@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	CODE_EXTENSIONS,
+	codemodeSearches,
 	decide,
+	fileSymbolIn,
+	findFileSearches,
 	findSearches,
 	isSourceFile,
 	lookupWords,
@@ -208,7 +211,7 @@ describe("decide", () => {
 		expect(d.action).toBe("block");
 		expect(d.action === "block" && d.reason).toContain('"parseConfig" looks like a symbol');
 		expect(d.action === "block" && d.reason).toContain("run the exact same command again");
-		expect(decide("enforce", rg("parseConfig"), "k", mem)).toEqual({ action: "allow" });
+		expect(decide("enforce", rg("parseConfig"), "k", mem)).toEqual({ action: "allow", override: true });
 		expect(decide("enforce", rg("parseConfig"), "other", mem).action).toBe("block");
 	});
 
@@ -244,5 +247,91 @@ describe("suggestion and isSourceFile", () => {
 		expect(isSourceFile(".bashrc")).toBe(false);
 		expect(isSourceFile("Makefile")).toBe(false);
 		expect(CODE_EXTENSIONS.has("kt")).toBe(true);
+	});
+});
+
+describe("gaps closed", () => {
+	test("wrapper flags that take a value", () => {
+		expect(findSearches("timeout -s KILL 5 rg parseConfig src")[0]!.pattern).toBe("parseConfig");
+		expect(findSearches("timeout --signal TERM 5s rg Foo")[0]!.tool).toBe("rg");
+		expect(findSearches("nice -n 5 grep Foo .")[0]!.pattern).toBe("Foo");
+		expect(findSearches("sudo -u bob rg Foo")[0]!.pattern).toBe("Foo");
+		expect(findSearches("fd -e ts | xargs -I {} rg Foo {}")[0]!.pattern).toBe("Foo");
+		expect(findSearches("env -u X rg Foo")[0]!.pattern).toBe("Foo");
+	});
+
+	test("groups around a pattern, nested or non-capturing", () => {
+		expect(symbolsIn("(?:parseConfig)")).toEqual(["parseConfig"]);
+		expect(symbolsIn("((parseConfig))")).toEqual(["parseConfig"]);
+		expect(symbolsIn("(?:fooBar|bazQux)")).toEqual(["fooBar", "bazQux"]);
+	});
+
+	test("brace globs: non-code only when every extension is", () => {
+		expect(targetsOnlyNonCode(search({ pattern: "x", filters: ["*.{md,txt}"] }))).toBe(true);
+		expect(targetsOnlyNonCode(search({ pattern: "x", filters: ["*.{md,ts}"] }))).toBe(false);
+		expect(targetsOnlyNonCode(search({ pattern: "x", filters: ["{*.yml}"] }))).toBe(true);
+	});
+});
+
+describe("file-name lookups", () => {
+	test("fd patterns, skipping flag values", () => {
+		expect(findFileSearches("fd -e ts ParseConfig src")).toEqual([{ tool: "fd", pattern: "ParseConfig", paths: ["src"], filters: [], files: true }]);
+		expect(findFileSearches("fdfind --type f UserService")[0]!.pattern).toBe("UserService");
+		expect(findFileSearches("fd -H")).toEqual([]);
+	});
+
+	test("find -name and friends", () => {
+		expect(findFileSearches("find . -name '*UserService*' -type f")).toEqual([
+			{ tool: "find", pattern: "*UserService*", paths: [], filters: [], files: true },
+		]);
+		expect(findFileSearches("find src -iname x -o -path y").map((s) => s.pattern)).toEqual(["x", "y"]);
+		expect(findFileSearches("find . -type f")).toEqual([]);
+		expect(findFileSearches("echo hi; ls")).toEqual([]);
+	});
+
+	test("fileSymbolIn wants a real symbol, not a plain word or an extension", () => {
+		expect(fileSymbolIn("*UserService*")).toEqual(["UserService"]);
+		expect(fileSymbolIn("user_service.rs")).toEqual(["user_service"]);
+		expect(fileSymbolIn("^AuthController")).toEqual(["AuthController"]);
+		expect(fileSymbolIn("src/ParseConfig.kt")).toEqual(["ParseConfig"]);
+		expect(fileSymbolIn(".*FooBar.*")).toEqual(["FooBar"]);
+		for (const p of [undefined, "config", "*.ts", "Foo", "a-b-cD", "**/*.json", "Readme"]) expect(fileSymbolIn(p)).toBeUndefined();
+	});
+
+	test("decide only nudges a file-name lookup, even in enforce", () => {
+		const mem = newMemory();
+		const d = decide("enforce", findFileSearches("fd UserService"), "k", mem);
+		expect(d.action).toBe("nudge");
+		expect(d.action === "nudge" && d.hint).toContain('codegraph_search({ query: "UserService" })');
+		expect(decide("enforce", findFileSearches("fd config"), "k", mem)).toEqual({ action: "allow" });
+		mem.lookedUp.add("userservice");
+		expect(decide("enforce", findFileSearches("fd UserService"), "k", mem)).toEqual({ action: "allow" });
+		expect(decide("off", findFileSearches("fd OtherThing"), "k", mem)).toEqual({ action: "allow" });
+	});
+
+	test("a text search and a file lookup together: the text search decides", () => {
+		const searches = [...findSearches("rg -l parseConfig"), ...findFileSearches("fd UserService")];
+		expect(decide("enforce", searches, "k", newMemory()).action).toBe("block");
+	});
+});
+
+describe("codemodeSearches", () => {
+	test("literal bash commands and grep patterns in a script", () => {
+		const code = `const a = await tools.bash({ command: "rg -n parseConfig src" });
+await tools.grep({ pattern: 'loadSettings', path: "." });
+await tools.bash({ timeout: 5, command: \`fd UserService\` });`;
+		expect(codemodeSearches(code)).toEqual([
+			{ tool: "rg", pattern: "parseConfig", paths: ["src"], filters: [] },
+			{ tool: "fd", pattern: "UserService", paths: [], filters: [], files: true },
+			{ tool: "grep", pattern: "loadSettings", paths: [], filters: [] },
+		]);
+	});
+
+	test("escapes are undone; computed commands and other tools are not knowable", () => {
+		expect(codemodeSearches(`tools.bash({ command: "rg \\"fooBar\\" src" })`)[0]!.pattern).toBe("fooBar");
+		expect(codemodeSearches(`tools.bash({ command: 'rg \\'fooBar\\' src' })`)[0]!.pattern).toBe("fooBar");
+		expect(codemodeSearches(`tools.bash({ command: "rg \\q fooBar" })`)[0]!.pattern).toBe("q");
+		expect(codemodeSearches("tools.bash({ command: cmd })")).toEqual([]);
+		expect(codemodeSearches(`tools.read({ path: "x.ts" }); console.log("rg Foo")`)).toEqual([]);
 	});
 });

@@ -13,6 +13,8 @@ export interface Search {
 	paths: string[];
 	/** `--type`/`--glob`/`--include` filters, as written. */
 	filters: string[];
+	/** A file-name lookup (`fd Foo`, `find -name '*Foo*'`): only ever nudged, never blocked. */
+	files?: true;
 }
 
 const OPERATORS = new Set(["|", "||", "&", "&&", ";", "(", ")", "\n", "|&"]);
@@ -93,6 +95,14 @@ VALUE_FLAGS["git grep"] = new Set("-A -B -C -m -e -f --after-context --before-co
 const PATTERN_FLAGS = new Set(["-e", "--regexp"]);
 const FILTER_FLAGS = new Set(["-g", "-t", "-T", "--glob", "--iglob", "--type", "--type-not", "--include", "-G", "--file-search-regex"]);
 const WRAPPERS = new Set(["sudo", "command", "exec", "time", "nice", "nohup", "env", "xargs", "timeout"]);
+/** Wrapper flags that take a separate value (`timeout -s KILL 5 rg …`, `nice -n 5 rg …`). */
+const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
+	timeout: new Set(["-s", "--signal", "-k", "--kill-after"]),
+	nice: new Set(["-n", "--adjustment"]),
+	sudo: new Set(["-u", "--user", "-g", "--group", "-C", "-D", "--chdir"]),
+	xargs: new Set(["-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"]),
+	env: new Set(["-u", "--unset", "-C", "--chdir"]),
+};
 
 /** The program of a simple command, skipping `VAR=x` assignments and wrappers like `xargs -0`. */
 function programIndex(words: string[]): number {
@@ -101,9 +111,10 @@ function programIndex(words: string[]): number {
 		while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]!)) i++;
 		const w = words[i];
 		if (w === undefined || !WRAPPERS.has(baseName(w))) return i;
+		const wrapper = baseName(w);
 		i++;
-		while (i < words.length && words[i]!.startsWith("-")) i++;
-		if (baseName(words[i - 1] ?? "") === "timeout" && /^\d/.test(words[i] ?? "")) i++;
+		while (i < words.length && words[i]!.startsWith("-")) i += WRAPPER_VALUE_FLAGS[wrapper]?.has(words[i]!) ? 2 : 1;
+		if (wrapper === "timeout" && /^\d/.test(words[i] ?? "")) i++;
 	}
 }
 
@@ -196,8 +207,12 @@ export function targetsOnlyNonCode(s: Search): boolean {
 		const nonCode = s.filters.every((f) => {
 			const neg = f.startsWith("!");
 			if (neg) return false;
-			const ext = /\.([A-Za-z0-9]+)\}?$/.exec(f)?.[1]?.toLowerCase() ?? (f.includes("*") || f.includes(".") ? undefined : f.toLowerCase());
-			return ext !== undefined && !CODE_EXTENSIONS.has(ext) && !CODE_TYPES.has(ext);
+			const bare = f.replace(/^\{([^,{}]*)\}$/, "$1");
+			const braces = /\.\{([A-Za-z0-9,]+)\}$/.exec(bare)?.[1];
+			const exts = braces
+				? braces.split(",").map((e) => e.toLowerCase())
+				: [/\.([A-Za-z0-9]+)$/.exec(bare)?.[1]?.toLowerCase() ?? (bare.includes("*") || bare.includes(".") ? undefined : bare.toLowerCase())];
+			return exts.every((ext) => ext !== undefined && ext !== "" && !CODE_EXTENSIONS.has(ext) && !CODE_TYPES.has(ext));
 		});
 		if (nonCode) return true;
 	}
@@ -217,7 +232,10 @@ function normalizeAlternative(raw: string): string {
 	let s = raw.trim();
 	s = s.replace(/\\[bB<>]/g, "").replace(/\[\[:<:\]\]|\[\[:>:\]\]/g, "");
 	s = s.replace(/^\^/, "").replace(/\$$/, "");
-	s = s.replace(/^\(\?:?/, "").replace(/\)$/, "");
+	for (let prev = ""; prev !== s; ) {
+		prev = s;
+		s = s.replace(/^\((?:\?:)?/, "").replace(/\)$/, "");
+	}
 	s = s.replace(DECL, "");
 	s = s.replace(/(?:\\?\(|\\?<|\s*\\s\*\\?\(|\s*\\s\*)$/, "");
 	s = s.replace(/^(?:\.\*|\\s\*|\\s\+)+|(?:\.\*|\\s\*|\\s\+)+$/g, "");
@@ -234,7 +252,7 @@ export function symbolsIn(pattern: string | undefined): string[] | undefined {
 	const alternatives = pattern.split(/\\?\|/);
 	const out: string[] = [];
 	for (const alt of alternatives) {
-		const s = normalizeAlternative(alt.replace(/^\(|\)$/g, ""));
+		const s = normalizeAlternative(alt);
 		if (s.length < 3 || !QUALIFIED.test(s) || KEYWORDS.has(s)) return undefined;
 		const parts = s.split(/::|\.|#|->/);
 		if (parts.some((p) => NOT_SYMBOLS.has(p.toLowerCase()))) return undefined;
@@ -257,7 +275,7 @@ export function lookupWords(params: Record<string, unknown>): string[] {
 export type Mode = "enforce" | "nudge" | "off";
 
 export type Decision =
-	| { action: "allow" }
+	| { action: "allow"; override?: true }
 	| { action: "block"; reason: string }
 	| { action: "nudge"; hint: string };
 
@@ -294,15 +312,23 @@ export function suggestion(symbols: string[]): string {
 export function decide(mode: Mode, searches: Search[], key: string, mem: GateMemory): Decision {
 	if (mode === "off") return { action: "allow" };
 	const symbols = new Set<string>();
+	const names = new Set<string>();
 	for (const s of searches) {
 		if (targetsOnlyNonCode(s)) continue;
-		for (const sym of symbolsIn(s.pattern) ?? []) if (!known(sym, mem)) symbols.add(sym);
+		for (const sym of (s.files ? fileSymbolIn(s.pattern) : symbolsIn(s.pattern)) ?? []) if (!known(sym, mem)) (s.files ? names : symbols).add(sym);
 	}
-	if (symbols.size === 0) return { action: "allow" };
+	if (symbols.size === 0 && names.size === 0) return { action: "allow" };
+	if (symbols.size === 0) {
+		const [one] = [...names];
+		return {
+			action: "nudge",
+			hint: `[codegraph] "${one}" looks like a symbol name: codegraph_search({ query: "${one}" }) finds where it is defined (file and line), codegraph_files lists the indexed files.`,
+		};
+	}
 	const list = [...symbols];
 	const hint = `"${list.join('", "')}" ${list.length === 1 ? "looks like a symbol" : "look like symbols"}: CodeGraph answers this structurally. Use ${suggestion(list)}.`;
 	if (mode === "nudge") return { action: "nudge", hint: `[codegraph] ${hint}` };
-	if (mem.blocked.has(key)) return { action: "allow" };
+	if (mem.blocked.has(key)) return { action: "allow", override: true };
 	mem.blocked.add(key);
 	return {
 		action: "block",
@@ -315,3 +341,78 @@ export const isSourceFile = (path: string): boolean => {
 	const ext = extOf(path);
 	return ext !== undefined && CODE_EXTENSIONS.has(ext);
 };
+
+const FD_VALUE_FLAGS = new Set(
+	"-e -t -E -d -x -X -S -c -j -g --extension --type --exclude --max-depth --min-depth --exact-depth --exec --exec-batch --size --changed-within --changed-before --owner --color --threads --max-results --base-directory --search-path --format --path-separator --batch-size --ignore-file".split(" "),
+);
+const FIND_NAME_FLAGS = new Set(["-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"]);
+
+/** File-name lookups in a shell command: `fd <pattern>`, `find … -name <glob>`. */
+export function findFileSearches(command: string): Search[] {
+	const out: Search[] = [];
+	for (const { words } of splitPipeline(command)) {
+		const at = programIndex(words);
+		const prog = baseName(words[at] ?? "");
+		const args = words.slice(at + 1);
+		if (prog === "fd" || prog === "fdfind") {
+			const positional: string[] = [];
+			for (let i = 0; i < args.length; i++) {
+				const a = args[i]!;
+				if (!a.startsWith("-")) positional.push(a);
+				else if (FD_VALUE_FLAGS.has(a)) i++;
+			}
+			if (positional.length > 0) out.push({ tool: prog, pattern: positional[0], paths: positional.slice(1), filters: [], files: true });
+		} else if (prog === "find") {
+			for (let i = 0; i < args.length - 1; i++) {
+				if (FIND_NAME_FLAGS.has(args[i]!)) out.push({ tool: "find", pattern: args[i + 1], paths: [], filters: [], files: true });
+			}
+		}
+	}
+	return out;
+}
+
+/**
+ * The symbol a file-name pattern looks for (`*ParseConfig*`, `user_service.rs`,
+ * `^AuthController`), stricter than `symbolsIn`: a plain word like `config` names files, not
+ * symbols, so it needs a camelCase/PascalCase hump or snake_case (`Readme`, `Makefile` are file names).
+ */
+export function fileSymbolIn(pattern: string | undefined): string[] | undefined {
+	if (pattern === undefined) return undefined;
+	const base = baseName(pattern)
+		.replace(/^\^?\.\*|\.\*\$?$/g, "")
+		.replace(/^[*^]+|[*$]+$/g, "")
+		.replace(/\\?\.[A-Za-z0-9]{1,5}$/, "")
+		.replace(/^[*^]+|[*$]+$/g, "");
+	if (base.length < 4 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(base) || !/[a-z][A-Z]|[a-z0-9]_[a-z]/.test(base)) return undefined;
+	if (NOT_SYMBOLS.has(base.toLowerCase())) return undefined;
+	return [base];
+}
+
+const unquote = (quote: string, body: string): string => {
+	if (quote === '"') {
+		try {
+			return JSON.parse(`"${body}"`);
+		} catch {
+			// not JSON-compatible: fall through to the plain unescape
+		}
+	}
+	return body.replace(/\\(.)/g, "$1");
+};
+
+const STRING = String.raw`(["'\`])((?:\\.|(?!\1)[^\\])*)\1`;
+const CODEMODE_BASH = new RegExp(String.raw`tools\.bash\(\s*\{[^}]*?\bcommand\s*:\s*` + STRING, "g");
+const CODEMODE_GREP = new RegExp(String.raw`tools\.grep\(\s*\{[^}]*?\bpattern\s*:\s*` + STRING, "g");
+
+/**
+ * Searches a codemode script makes through `tools.bash({ command: "…" })` and
+ * `tools.grep({ pattern: "…" })` with literal strings (a computed command is not knowable).
+ */
+export function codemodeSearches(code: string): Search[] {
+	const out: Search[] = [];
+	for (const m of code.matchAll(CODEMODE_BASH)) {
+		const command = unquote(m[1]!, m[2]!);
+		out.push(...findSearches(command), ...findFileSearches(command));
+	}
+	for (const m of code.matchAll(CODEMODE_GREP)) out.push({ tool: "grep", pattern: unquote(m[1]!, m[2]!), paths: [], filters: [] });
+	return out;
+}

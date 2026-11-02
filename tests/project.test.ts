@@ -5,10 +5,14 @@ import {
 	ensureIndex,
 	findProject,
 	type IndexStatus,
+	lockHeld,
+	lockProblem,
 	parseStatus,
+	pidAlive,
 	planIndex,
 	type Project,
 	type Runner,
+	runUnlocking,
 } from "../extensions/core/project.ts";
 
 const HOME = resolve("/home/me");
@@ -107,8 +111,15 @@ describe("planIndex and actionArgs", () => {
 		expect(planIndex(st({ reindexRecommended: true }), repo, o)).toBe("index");
 		expect(planIndex(st({ versionMismatch: true }), repo, o)).toBe("index");
 		expect(planIndex(st({ state: "failed" }), repo, o)).toBe("index");
-		expect(planIndex(st({ state: "indexing", pending: 2 }), repo, o)).toBe("sync");
+		expect(planIndex(st({ state: "partial" }), repo, o)).toBe("index");
+		expect(planIndex(st({ state: "unknown", pending: 2 }), repo, o)).toBe("sync");
 		expect(planIndex(st({}), repo, o)).toBe("none");
+	});
+
+	test("an index left at \"indexing\": a killed run is rebuilt, a live one is left alone", () => {
+		const o = { autoInit: true };
+		expect(planIndex(st({ state: "indexing", pending: 2 }), repo, o)).toBe("index");
+		expect(planIndex(st({ state: "indexing", pending: 2 }), repo, { ...o, locked: true })).toBe("none");
 	});
 
 	test("CLI arguments", () => {
@@ -166,5 +177,72 @@ describe("ensureIndex", () => {
 		expect(r.action).toBe("skip");
 		expect(r.status.initialized).toBe(false);
 		expect(r.error).toContain("not installed");
+	});
+});
+
+describe("stale locks", () => {
+	test("lockHeld: a live pid in .codegraph/codegraph.lock", () => {
+		const read = (content?: string) => (p: string) => (p === join("/r", ".codegraph", "codegraph.lock") ? content : undefined);
+		expect(lockHeld("/r", read("123"), (pid) => pid === 123)).toBe(true);
+		expect(lockHeld("/r", read("123\n"), () => false)).toBe(false);
+		expect(lockHeld("/r", read(undefined), () => true)).toBe(false);
+		expect(lockHeld("/r", read("garbage"), () => true)).toBe(false);
+		expect(lockHeld("/r", read("0"), () => true)).toBe(false);
+		expect(lockHeld("/definitely/not/here")).toBe(false);
+	});
+
+	test("pidAlive: this process yes, a free pid no", () => {
+		expect(pidAlive(process.pid)).toBe(true);
+		expect(pidAlive(2 ** 22 + 12345)).toBe(false);
+	});
+
+	test("lockProblem recognises CodeGraph's lock messages", () => {
+		expect(lockProblem("CodeGraph database is locked by another process (PID 5)")).toBe(true);
+		expect(lockProblem("Error: lock file exists")).toBe(true);
+		expect(lockProblem("SQLITE_BUSY: database is locked")).toBe(true);
+		expect(lockProblem("blocked? no: clock skew")).toBe(false);
+	});
+
+	test("runUnlocking: unlock and one more try only on a lock failure", async () => {
+		const script = (codes: number[], stderr = "database is locked") => {
+			const calls: string[] = [];
+			const run: Runner = async (args) => {
+				calls.push(args.join(" "));
+				const code = args[0] === "unlock" ? 0 : (codes.shift() ?? 0);
+				return { code, stdout: "", stderr: code ? stderr : "" };
+			};
+			return { run, calls };
+		};
+		let s = script([1, 0]);
+		expect((await runUnlocking(s.run, ["index", "-q"], "/r")).code).toBe(0);
+		expect(s.calls).toEqual(["index -q", "unlock", "index -q"]);
+		s = script([1, 1]);
+		expect((await runUnlocking(s.run, ["sync", "-q"], "/r")).code).toBe(1);
+		expect(s.calls).toEqual(["sync -q", "unlock", "sync -q"]);
+		s = script([1], "parse error");
+		expect((await runUnlocking(s.run, ["index", "-q"], "/r")).code).toBe(1);
+		expect(s.calls).toEqual(["index -q"]);
+		s = script([0]);
+		await runUnlocking(s.run, ["index", "-q"], "/r");
+		expect(s.calls).toEqual(["index -q"]);
+	});
+
+	test("ensureIndex rebuilds an index a killed run left at \"indexing\", unless the lock is live", async () => {
+		const stuck = JSON.stringify({ initialized: true, version: "1", fileCount: 3, index: { state: "indexing", builtWithVersion: "1" } });
+		const make = () => {
+			const calls: string[] = [];
+			const run: Runner = async (args) => {
+				calls.push(args.join(" "));
+				return { code: 0, stdout: stuck, stderr: "" };
+			};
+			return { run, calls };
+		};
+		const repo: Project = { root: "/r", hasIndexDir: true, isRepo: true };
+		let m = make();
+		expect((await ensureIndex(repo, m.run, { autoInit: true, locked: () => false })).action).toBe("index");
+		expect(m.calls).toEqual(["status -j", "index -q", "status -j"]);
+		m = make();
+		expect((await ensureIndex(repo, m.run, { autoInit: true, locked: () => true })).action).toBe("none");
+		expect(m.calls).toEqual(["status -j"]);
 	});
 });

@@ -48,6 +48,14 @@ export function sanitize(text: string): string {
 		.slice(-MAX_STDERR);
 }
 
+/** The server process exited under a call (a crash, not a slow or failed query). */
+export class ServerExitError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ServerExitError";
+	}
+}
+
 interface Pending {
 	resolve: (v: any) => void;
 	reject: (e: Error) => void;
@@ -81,7 +89,7 @@ export class CodeGraphServer {
 			this.stderr = (this.stderr + String(chunk)).slice(-MAX_STDERR);
 		});
 		proc.on("error", (err) => this.fail(proc, err));
-		proc.on("exit", (code) => this.fail(proc, new Error(sanitize(this.stderr) || `codegraph serve exited with code ${code}`)));
+		proc.on("exit", (code) => this.fail(proc, new ServerExitError(sanitize(this.stderr) || `codegraph serve exited with code ${code}`)));
 		const rootUri = pathToFileURL(this.root).href;
 		return this.request("initialize", {
 			protocolVersion: "2024-11-05",

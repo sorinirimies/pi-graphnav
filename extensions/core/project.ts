@@ -3,7 +3,7 @@
  *
  * Pure, except where a function takes the file system or a process runner as a parameter.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, parse, resolve } from "node:path";
 
@@ -71,16 +71,50 @@ export function parseStatus(json: string): IndexStatus {
 
 export type IndexAction = "init" | "index" | "sync" | "none" | "skip";
 
+/** Is a live process holding `.codegraph/codegraph.lock` (an index run in progress right now)? */
+export function lockHeld(
+	root: string,
+	read: (p: string) => string | undefined = (p) => {
+		try {
+			return readFileSync(p, "utf8");
+		} catch {
+			return undefined;
+		}
+	},
+	alive: (pid: number) => boolean = pidAlive,
+): boolean {
+	const pid = Number.parseInt(read(join(root, ".codegraph", "codegraph.lock")) ?? "", 10);
+	return Number.isInteger(pid) && pid > 0 && alive(pid);
+}
+
+export function pidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (e) {
+		// EPERM: it exists, it is just not ours.
+		return (e as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
 /**
  * What brings the index up to date: `init` when there is none (only in a git work tree, and
  * only when allowed), a full `index` when it is stale or broken, `sync` for pending changes.
+ *
+ * State `indexing` with no live lock holder is a run that was killed half-way: the index is
+ * truncated and only a full `index` repairs it. With a live holder another process is
+ * indexing right now: leave it alone.
  */
-export function planIndex(status: IndexStatus, project: Project, opts: { autoInit: boolean }): IndexAction {
+export function planIndex(status: IndexStatus, project: Project, opts: { autoInit: boolean; locked?: boolean }): IndexAction {
 	if (!status.initialized) return opts.autoInit && project.isRepo ? "init" : "skip";
-	if (status.reindexRecommended || status.versionMismatch || (status.state !== "complete" && status.state !== "indexing")) return "index";
+	if (status.state === "indexing") return opts.locked ? "none" : "index";
+	if (status.reindexRecommended || status.versionMismatch || status.state === "partial" || status.state === "failed") return "index";
 	if (status.pending > 0) return "sync";
 	return "none";
 }
+
+/** A failure that a stale lock explains: `codegraph unlock`, then one more try. */
+export const lockProblem = (output: string): boolean => /\block(ed)?\b|lock file|database is locked/i.test(output);
 
 /** The CLI arguments for an action. */
 export function actionArgs(action: Exclude<IndexAction, "none" | "skip">): string[] {
@@ -105,16 +139,28 @@ export interface EnsureResult {
 }
 
 /** Bring the index of `project` up to date: status, then init/index/sync as planned, then status again. */
-export async function ensureIndex(project: Project, run: Runner, opts: { autoInit: boolean }): Promise<EnsureResult> {
+export async function ensureIndex(
+	project: Project,
+	run: Runner,
+	opts: { autoInit: boolean; locked?: (root: string) => boolean },
+): Promise<EnsureResult> {
 	const first = await run(["status", "-j"], project.root);
 	if (first.code === 127) return { action: "skip", status: parseStatus(""), error: "the codegraph CLI is not installed (npm i -g @colbymchenry/codegraph)" };
 	const status = parseStatus(first.stdout);
-	const action = planIndex(status, project, opts);
+	const action = planIndex(status, project, { autoInit: opts.autoInit, locked: (opts.locked ?? lockHeld)(project.root) });
 	if (action === "none" || action === "skip") return { action, status };
-	const res = await run(actionArgs(action), project.root);
+	const res = await runUnlocking(run, actionArgs(action), project.root);
 	const after = parseStatus((await run(["status", "-j"], project.root)).stdout);
 	if (res.code !== 0) return { action, status: after, error: `codegraph ${action} failed (exit ${res.code}): ${lastLine(res.stderr || res.stdout)}` };
 	return { action, status: after };
+}
+
+/** Run an index action; when it fails on a stale lock, `codegraph unlock` and try once more. */
+export async function runUnlocking(run: Runner, args: string[], root: string): ReturnType<Runner> {
+	const res = await run(args, root);
+	if (res.code === 0 || res.code === 127 || !lockProblem(res.stderr + res.stdout)) return res;
+	await run(["unlock"], root);
+	return run(args, root);
 }
 
 const lastLine = (s: string): string =>

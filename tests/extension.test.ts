@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultRunner, exitCode, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/graphnav.ts";
+import { defaultRunner, exitCode, LARGE_READ_HINT, LARGE_READ_LINES, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/graphnav.ts";
 import { type Config, configPath, DEFAULT_CONFIG } from "../extensions/core/config.ts";
 import type { ServerProcess, Spawner } from "../extensions/core/mcp.ts";
 import type { Runner } from "../extensions/core/project.ts";
@@ -46,6 +46,7 @@ function fakeSpawn() {
 					const msg = JSON.parse(line);
 					const reply = (body: unknown) => queueMicrotask(() => proc.stdout.emit("data", `${JSON.stringify({ jsonrpc: "2.0", id: msg.id, ...(body as object) })}\n`));
 					if (msg.method === "initialize") reply({ result: {} });
+					else if (msg.method === "tools/call" && msg.params.arguments.query === "die") queueMicrotask(() => proc.emit("exit", 1));
 					else if (msg.method === "tools/call")
 						reply({
 							result:
@@ -79,12 +80,14 @@ async function until(cond: () => boolean, what: string) {
 }
 
 /** Load the extension with fakes and start a session in `cwd` (a fresh repo by default), waiting for indexing. */
-async function start(opts: { config?: Partial<Config>; run?: ReturnType<typeof fakeRun>; cwd?: string; wait?: boolean } = {}) {
+async function start(
+	opts: { config?: Partial<Config>; run?: ReturnType<typeof fakeRun>; cwd?: string; wait?: boolean; breaker?: { threshold: number; resetMs: number } } = {},
+) {
 	if (opts.config) writeFileSync(configPath(), JSON.stringify(opts.config));
 	else rmSync(configPath(), { force: true });
 	const runner = opts.run ?? fakeRun();
 	const server = fakeSpawn();
-	const ext = load({ run: runner.run, spawn: server.spawn });
+	const ext = load({ run: runner.run, spawn: server.spawn, breaker: opts.breaker });
 	const cwd = opts.cwd ?? repo();
 	const ctx = fakeCtx(cwd);
 	await ext.hooks.session_start!({}, ctx);
@@ -101,7 +104,7 @@ afterEach(() => {
 	rmSync(configPath(), { force: true });
 });
 
-const status = (o: Partial<Status>): Status => ({ config: DEFAULT_CONFIG, state: "none", blocked: 0, nudged: 0, ...o });
+const status = (o: Partial<Status>): Status => ({ config: DEFAULT_CONFIG, state: "none", blocked: 0, nudged: 0, followed: 0, overridden: 0, ...o });
 
 describe("status text", () => {
 	test("statusText: off, state, files when ready, mode", () => {
@@ -115,7 +118,7 @@ describe("status text", () => {
 	test("statusReport: project, index, counts and the last error", () => {
 		const index = { initialized: true, state: "complete", files: 7, pending: 2, reindexRecommended: false, versionMismatch: false };
 		expect(statusReport(status({ state: "ready", index, project: { root: "/r", hasIndexDir: true, isRepo: true }, blocked: 1, nudged: 2, error: "x" }))).toBe(
-			["codegraph: ready · 7 files · enforce", "project: /r", "index: complete, 7 files, 2 pending changes", "this session: 1 searches blocked, 2 nudged", "last error: x"].join("\n"),
+			["codegraph: ready · 7 files · enforce", "project: /r", "index: complete, 7 files, 2 pending changes", "this session: 1 searches blocked (0 answered with CodeGraph, 0 re-run), 2 nudged", "last error: x"].join("\n"),
 		);
 		expect(statusReport(status({}))).toContain("project: (none: not in a git repo or indexed directory)");
 		expect(statusReport(status({})).split("\n").length).toBe(3);
@@ -131,6 +134,14 @@ describe("searchesOf", () => {
 		expect(searchesOf("grep", { pattern: "Foo" })).toEqual([{ tool: "grep", pattern: "Foo", paths: [], filters: [] }]);
 		expect(searchesOf("grep", {})).toEqual([]);
 		expect(searchesOf("read", { path: "a.ts" })).toEqual([]);
+	});
+
+	test("fd/find in shell commands, pi's find tool, literal searches in a codemode script", () => {
+		expect(searchesOf("bash", { command: "fd UserService" })).toEqual([{ tool: "fd", pattern: "UserService", paths: [], filters: [], files: true }]);
+		expect(searchesOf("find", { pattern: "**/*UserService*" })).toEqual([{ tool: "find", pattern: "**/*UserService*", paths: [], filters: [], files: true }]);
+		expect(searchesOf("find", {})).toEqual([]);
+		expect(searchesOf("codemode", { code: 'await tools.bash({ command: "rg parseConfig" })' })[0]!.pattern).toBe("parseConfig");
+		expect(searchesOf("codemode", { code: 5 })).toEqual([]);
 	});
 });
 
@@ -251,7 +262,7 @@ describe("gate", () => {
 		expect(first.reason).toContain('"parseConfig" looks like a symbol');
 		expect(await s.call("bash", search)).toBeUndefined();
 		await s.cmd("status");
-		expect(s.ctx.notes[0]![0]).toContain("1 searches blocked, 0 nudged");
+		expect(s.ctx.notes[0]![0]).toContain("1 searches blocked (0 answered with CodeGraph, 1 re-run), 0 nudged");
 	});
 
 	test("pi's grep tool is gated too", async () => {
@@ -283,7 +294,7 @@ describe("gate", () => {
 		await s.call("bash", search, "n2");
 		expect((await s.result("bash", search, undefined, "n2")).content.length).toBe(1);
 		await s.cmd("status");
-		expect(s.ctx.notes[0]![0]).toContain("0 searches blocked, 2 nudged");
+		expect(s.ctx.notes[0]![0]).toContain("0 searches blocked (0 answered with CodeGraph, 0 re-run), 2 nudged");
 	});
 
 	test("mode off, a disabled extension and an index that is not ready let everything pass", async () => {
@@ -462,7 +473,7 @@ describe("/codegraph", () => {
 		const s = await start();
 		await s.cmd("");
 		expect(s.ctx.notes[0]).toEqual([
-			`codegraph: ready · 3 files · enforce\nproject: ${s.cwd}\nindex: complete, 3 files, 0 pending changes\nthis session: 0 searches blocked, 0 nudged`,
+			`codegraph: ready · 3 files · enforce\nproject: ${s.cwd}\nindex: complete, 3 files, 0 pending changes\nthis session: 0 searches blocked (0 answered with CodeGraph, 0 re-run), 0 nudged`,
 			"info",
 		]);
 		const none = await start({ cwd: plainDir() });
@@ -545,4 +556,92 @@ describe("/codegraph", () => {
 		expect(s.ctx.status.codegraph).toBe("codegraph: ready · 3 files · off");
 	});
 
+});
+
+describe("0.2: stats, resilience, large reads, project settings", () => {
+	const search = { command: "rg -n parseConfig src" };
+
+	test("a block answered with CodeGraph counts as followed; a re-run as overridden", async () => {
+		const s = await start();
+		expect((await s.call("bash", search, "b1"))?.block).toBe(true);
+		await s.exec("codegraph_search", { query: "parseConfig" });
+		await s.exec("codegraph_search", { query: "other" }); // no second count without a new block
+		expect((await s.call("bash", { command: "rg -n loadSettings src" }, "b2"))?.block).toBe(true);
+		expect(await s.call("bash", { command: "rg -n loadSettings src" }, "b3")).toBeUndefined();
+		await s.cmd("status");
+		expect(s.ctx.notes.at(-1)![0]).toContain("2 searches blocked (1 answered with CodeGraph, 1 re-run)");
+	});
+
+	test("a crashed server is restarted and the call retried", async () => {
+		const s = await start();
+		// "die" kills the server every time: one retry on a fresh process, then the error.
+		await expect(s.exec("codegraph_search", { query: "die" })).rejects.toThrow("exited with code 1");
+		expect(s.server.spawned.length).toBe(2);
+		const ok = await s.exec("codegraph_search", { query: "fine" });
+		expect(ok.content[0].text).toContain('"fine"');
+	});
+
+	test("repeated failures make CodeGraph unavailable: calls fail fast, the gate stands aside, the status says so", async () => {
+		const s = await start({ breaker: { threshold: 2, resetMs: 60_000 } });
+		for (let i = 0; i < 2; i++) await expect(s.exec("codegraph_search", { query: "die" })).rejects.toThrow();
+		await until(() => /unavailable/.test(s.ctx.status.codegraph ?? ""), "the status line");
+		expect(s.ctx.status.codegraph).toBe("codegraph: unavailable · enforce");
+		const before = s.server.spawned.length;
+		await expect(s.exec("codegraph_search", { query: "fine" })).rejects.toThrow("CodeGraph is unavailable");
+		expect(s.server.spawned.length).toBe(before);
+		expect(await s.call("bash", search)).toBeUndefined();
+		await s.cmd("status");
+		expect(s.ctx.notes.at(-1)![0]).toContain("searches are not gated until it recovers");
+	});
+
+	test("CodeGraph's own error answers do not count as failures", async () => {
+		const s = await start({ breaker: { threshold: 1, resetMs: 60_000 } });
+		await expect(s.exec("codegraph_search", { query: "fail" })).rejects.toThrow("bad query");
+		await expect(s.exec("codegraph_search", { query: "fail" })).rejects.toThrow("bad query");
+		expect(s.ctx.status.codegraph).toContain("ready");
+	});
+
+	test("a whole large source file read earns one hint per file", async () => {
+		const s = await start({ config: { readHintAfter: 0 } });
+		const big = [{ type: "text", text: "x\n".repeat(LARGE_READ_LINES + 1) }];
+		const out = await s.result("read", { path: "src/big.ts" }, big);
+		expect(out.content.at(-1)).toEqual({ type: "text", text: `\n${LARGE_READ_HINT}` });
+		expect(await s.result("read", { path: "src/big.ts" }, big)).toBeUndefined();
+		expect(await s.result("read", { path: "src/other.ts", offset: 1 }, big)).toBeUndefined();
+		expect(await s.result("read", { path: "src/small.ts" }, [{ type: "text", text: "x" }])).toBeUndefined();
+		expect(await s.result("read", { path: "notes.md" }, big)).toBeUndefined();
+		expect(await s.result("read", { path: "src/img.ts" }, [{ type: "image" }])).toBeUndefined();
+		expect(await s.result("read", { path: "src/none.ts" }, undefined)).toBeUndefined();
+		await s.cmd("mode off");
+		expect(await s.result("read", { path: "src/big2.ts" }, big)).toBeUndefined();
+	});
+
+	test("fd by a symbol name is nudged, not blocked", async () => {
+		const s = await start();
+		expect(await s.call("bash", { command: "fd UserService" }, "f1")).toBeUndefined();
+		const out = await s.result("bash", { command: "fd UserService" }, [{ type: "text", text: "src/user-service.ts" }], "f1");
+		expect(out.content.at(-1).text).toContain('codegraph_search({ query: "UserService" })');
+	});
+
+	test(".pi/codegraph.json overrides the global settings for its project", async () => {
+		const dir = repo();
+		mkdirSync(join(dir, ".pi"));
+		writeFileSync(join(dir, ".pi", "codegraph.json"), JSON.stringify({ mode: "nudge" }));
+		const s = await start({ cwd: dir, config: { mode: "enforce" } });
+		expect(s.ctx.status.codegraph).toContain("· nudge");
+		await s.cmd("status");
+		expect(s.ctx.notes.at(-1)![0]).toContain("project settings (.pi/codegraph.json): mode nudge");
+		await s.cmd("mode enforce"); // a command wins for the session and is saved globally
+		expect(s.ctx.status.codegraph).toContain("· enforce");
+		expect(JSON.parse(readFileSync(configPath(), "utf8")).mode).toBe("enforce");
+	});
+
+	test("an unusable .pi/codegraph.json is reported and ignored", async () => {
+		const dir = repo();
+		mkdirSync(join(dir, ".pi"));
+		writeFileSync(join(dir, ".pi", "codegraph.json"), "{oops");
+		const s = await start({ cwd: dir });
+		expect(s.ctx.notes.some(([m]) => m.includes("is not valid JSON; ignoring it"))).toBe(true);
+		expect(s.ctx.status.codegraph).toContain("· enforce");
+	});
 });

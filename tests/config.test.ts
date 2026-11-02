@@ -9,7 +9,10 @@ import {
 	DEFAULT_CONFIG,
 	loadConfig,
 	MODES,
+	projectConfigPath,
 	readConfig,
+	readProjectConfig,
+	sanitizeOverrides,
 	resolveAgentDir,
 	sanitizeConfig,
 	saveConfig,
@@ -106,5 +109,35 @@ describe("config file", () => {
 		mkdirSync(file, { recursive: true }); // rename onto a directory fails
 		await expect(saveConfig(DEFAULT_CONFIG, file)).rejects.toThrow();
 		expect(readdirSync(join(file, ".."))).toEqual(["codegraph.json"]);
+	});
+});
+
+describe("project overrides", () => {
+	test("sanitizeOverrides keeps only valid keys", () => {
+		expect(sanitizeOverrides({ mode: "nudge", enabled: false, autoInit: false, autoSync: true, readHintAfter: 7.6, watch: false, junk: 1 })).toEqual({
+			mode: "nudge",
+			enabled: false,
+			autoInit: false,
+			autoSync: true,
+			readHintAfter: 8,
+		});
+		expect(sanitizeOverrides({ mode: "loud", enabled: "no", readHintAfter: Number.NaN })).toEqual({});
+		for (const raw of [null, 3, "x", []]) expect(sanitizeOverrides(raw)).toEqual({});
+	});
+
+	test("readProjectConfig: missing, valid, broken, unreadable", async () => {
+		const root = mkdtempSync(join(tmpdir(), "cg-proj-"));
+		expect(projectConfigPath(root)).toBe(join(root, ".pi", "codegraph.json"));
+		expect(await readProjectConfig(root)).toEqual({ overrides: {} });
+		mkdirSync(join(root, ".pi"));
+		writeFileSync(projectConfigPath(root), JSON.stringify({ mode: "off" }));
+		expect(await readProjectConfig(root)).toEqual({ overrides: { mode: "off" } });
+		writeFileSync(projectConfigPath(root), "{nope");
+		expect((await readProjectConfig(root)).problem).toContain("is not valid JSON");
+		const dir = mkdtempSync(join(tmpdir(), "cg-proj-"));
+		mkdirSync(join(dir, ".pi", "codegraph.json"), { recursive: true });
+		const r = await readProjectConfig(dir);
+		expect(r.overrides).toEqual({});
+		expect(r.problem).toContain("cannot read");
 	});
 });

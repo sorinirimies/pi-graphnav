@@ -16,19 +16,30 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) extension.
 
 * **Keeps the index current.** At session start, in the background: `codegraph init` for a git repo
   without an index, a full `codegraph index` when the index is stale or was built by another
-  CodeGraph version, `codegraph sync` for pending changes. While pi runs, the server's file
-  watcher follows your edits.
+  CodeGraph version, `codegraph sync` for pending changes. An index a killed run left half-built
+  is rebuilt (unless another process is indexing right now), and a failure on a stale lock gets
+  `codegraph unlock` and one more try. While pi runs, the server's file watcher follows your edits.
 * **The `codegraph_*` tools** (`explore`, `search`, `node`, `callers`, `callees`, `impact`,
   `files`, `status`) on one long-lived `codegraph serve --mcp` per project: no process start per
-  call, and the watcher stays alive.
+  call, and the watcher stays alive. Resilient, with
+  [arrow-resilience-kit](https://www.npmjs.com/package/arrow-resilience-kit): a server that dies
+  under a call is restarted and the call retried once; after 3 failed calls in a row CodeGraph
+  counts as unavailable for a minute, so calls fail fast and the gate stops sending the agent to
+  it (status line: `codegraph: unavailable`).
 * **Steers symbol searches to CodeGraph.** `rg parseConfig`, `grep -rn UserService src`,
   `git grep`, `ag`, `ack` and pi's `grep` tool with a symbol-like pattern are blocked once with
   the CodeGraph call that answers it (`enforce`), or run with that hint appended (`nudge`).
   Running the same command again is allowed: CodeGraph cannot answer everything. Searches for
   phrases, string literals or in docs and config (`*.md`, `--type yaml`, …) are never touched,
-  nor symbols already looked up with CodeGraph.
+  nor symbols already looked up with CodeGraph. Searches a codemode script makes with literal
+  `tools.bash({ command })` / `tools.grep({ pattern })` are gated the same way.
+* **Nudges file-name lookups.** `fd UserService`, `find . -name '*ParseConfig*'` and pi's `find`
+  tool with a camelCase or snake_case name run, with a hint to `codegraph_search` (never blocked).
 * **Hints after blind reading.** Reading several source files before any CodeGraph call adds
-  one hint to use `codegraph_explore`.
+  one hint to use `codegraph_explore`; reading a whole source file over 400 lines adds one to
+  fetch just the symbol with `codegraph_node`.
+* **Shows whether it helps.** `/codegraph status` counts blocked searches, how many the agent
+  answered with CodeGraph and how many it re-ran instead.
 * **Prompt guidance** that stays the same every turn, so the prompt cache survives.
 
 Needs the CodeGraph CLI: `npm i -g @colbymchenry/codegraph`. The project is the nearest
@@ -82,6 +93,10 @@ Settings live in `<pi agent dir>/codegraph.json` (`PI_CODING_AGENT_DIR`, else `~
 | `readHintAfter` | `3` | source files read before the CodeGraph hint (`0`: never) |
 | `timeoutMs` | `30000` | per-call timeout of the CodeGraph server |
 
+A project can override `enabled`, `mode`, `autoInit`, `autoSync` and `readHintAfter` for itself in
+`<project>/.pi/codegraph.json` (commit it to share), e.g. `{ "mode": "nudge" }` for a repo full of
+generated code. A `/codegraph` command still wins for the session.
+
 Replaces `@vndv/pi-codegraph` (same tool names): uninstall that one first.
 
 ## Development
@@ -100,6 +115,7 @@ Layout:
 | `extensions/core/gate.ts` | spotting symbol searches in shell commands; the gate decision |
 | `extensions/core/project.ts` | project root, `codegraph status -j`, what keeps the index current |
 | `extensions/core/mcp.ts` | the long-lived `codegraph serve --mcp` client |
+| `extensions/core/resilience.ts` | circuit breaker and crash retry (arrow-resilience-kit) |
 | `extensions/core/tools.ts` | tool definitions and prompt guidelines |
 | `extensions/core/config.ts`, `extensions/command/parse.ts` | settings, `/codegraph` parsing |
 | `tests/` | `bun test`: one file per module, `extension` (hooks), `fuzz` (randomised properties) |

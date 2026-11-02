@@ -46,5 +46,8 @@
     "@types/bun": "^1.4.4",
     "typescript": "^7.0.2",
     "@earendil-works/pi-ai": "^1.4.0"
+  },
+  "dependencies": {
+    "arrow-resilience-kit": "^0.10.2"
   }
 }

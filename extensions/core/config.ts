@@ -101,3 +101,35 @@ export async function saveConfig(config: Config, path = configPath()): Promise<v
 		throw e;
 	}
 }
+
+/** What a project may override for itself, in `<project>/.pi/codegraph.json` (committable). */
+export type ProjectOverrides = Partial<Pick<Config, "enabled" | "mode" | "autoInit" | "autoSync" | "readHintAfter">>;
+
+/** Keep only the valid override keys; anything else in the file is ignored. */
+export function sanitizeOverrides(raw: unknown): ProjectOverrides {
+	const r = (typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+	const out: ProjectOverrides = {};
+	for (const key of ["enabled", "autoInit", "autoSync"] as const) if (typeof r[key] === "boolean") out[key] = r[key] as boolean;
+	if (MODES.includes(r.mode as Mode)) out.mode = r.mode as Mode;
+	if (typeof r.readHintAfter === "number" && Number.isFinite(r.readHintAfter)) out.readHintAfter = clampInt(r.readHintAfter, 0, 100, 0);
+	return out;
+}
+
+export const projectConfigPath = (root: string): string => join(root, ".pi", "codegraph.json");
+
+/** A project's overrides; none when the file is missing, a `problem` when it is unusable. */
+export async function readProjectConfig(root: string): Promise<{ overrides: ProjectOverrides; problem?: string }> {
+	const path = projectConfigPath(root);
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (e) {
+		const code = (e as { code?: string } | null)?.code;
+		return code === "ENOENT" ? { overrides: {} } : { overrides: {}, problem: `cannot read ${path} (${code ?? "error"})` };
+	}
+	try {
+		return { overrides: sanitizeOverrides(JSON.parse(raw)) };
+	} catch {
+		return { overrides: {}, problem: `${path} is not valid JSON` };
+	}
+}
