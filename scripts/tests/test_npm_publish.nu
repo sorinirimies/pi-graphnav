@@ -3,7 +3,7 @@
 
 use std/assert
 use runner.nu *
-use ../ci/npm_publish.nu [publish_args, has_token]
+use ../ci/npm_publish.nu [publish_args, has_token, lost_race]
 
 def "test npm_publish: plain publish is public" [] {
     assert equal (publish_args false false) ["publish" "--access" "public"]
@@ -23,6 +23,19 @@ def "test npm_publish: token from NODE_AUTH_TOKEN or NPM_TOKEN" [] {
 def "test npm_publish: missing or empty token" [] {
     assert (not (has_token {}))
     assert (not (has_token { NODE_AUTH_TOKEN: "", NPM_TOKEN: "" }))
+}
+
+def "test npm_publish: the other host publishing first is recognised" [] {
+    assert (lost_race 'npm error 409 Conflict - PUT https://registry.npmjs.org/x - Cannot publish over previously staged version "0.2.0".')
+    assert (lost_race "npm error code E409")
+    assert (lost_race "npm ERR! code EPUBLISHCONFLICT")
+    assert (lost_race "You cannot publish over the previously published versions: 0.2.0.")
+}
+
+def "test npm_publish: other failures are not a lost race" [] {
+    assert (not (lost_race "npm error code E403\nnpm error 403 Forbidden"))
+    assert (not (lost_race "npm error code ENEEDAUTH"))
+    assert (not (lost_race ""))
 }
 
 def main [] { run-tests }
