@@ -1,10 +1,10 @@
-# pi-codegraph
+# pi-graphnav
 
-[![npm](https://img.shields.io/npm/v/pi-codegraph.svg)](https://www.npmjs.com/package/pi-codegraph)
-[![CI](https://github.com/sorinirimies/pi-codegraph/actions/workflows/ci.yml/badge.svg)](https://github.com/sorinirimies/pi-codegraph/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/pi-graphnav.svg)](https://www.npmjs.com/package/pi-graphnav)
+[![CI](https://github.com/sorinirimies/pi-graphnav/actions/workflows/ci.yml/badge.svg)](https://github.com/sorinirimies/pi-graphnav/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Audit](https://github.com/sorinirimies/pi-codegraph/actions/workflows/security.yml/badge.svg)](https://github.com/sorinirimies/pi-codegraph/actions/workflows/security.yml)
-[![Fuzz](https://github.com/sorinirimies/pi-codegraph/actions/workflows/fuzz.yml/badge.svg)](https://github.com/sorinirimies/pi-codegraph/actions/workflows/fuzz.yml)
+[![Audit](https://github.com/sorinirimies/pi-graphnav/actions/workflows/security.yml/badge.svg)](https://github.com/sorinirimies/pi-graphnav/actions/workflows/security.yml)
+[![Fuzz](https://github.com/sorinirimies/pi-graphnav/actions/workflows/fuzz.yml/badge.svg)](https://github.com/sorinirimies/pi-graphnav/actions/workflows/fuzz.yml)
 
 CodeGraph-first code navigation for pi: the agent understands code through
 [CodeGraph](https://github.com/colbymchenry/codegraph)'s symbol graph instead of grepping and
@@ -37,7 +37,7 @@ directory with `.codegraph/`, else the git work tree; never your home directory.
 ## Install
 
 ```bash
-pi install npm:pi-codegraph
+pi install npm:pi-graphnav
 ```
 
 ## Use
@@ -78,7 +78,7 @@ Layout:
 
 | Path | What |
 |---|---|
-| `extensions/codegraph.ts` | wiring: hooks, tools, the command, the status line |
+| `extensions/graphnav.ts` | wiring: hooks, tools, the command, the status line |
 | `extensions/core/gate.ts` | spotting symbol searches in shell commands; the gate decision |
 | `extensions/core/project.ts` | project root, `codegraph status -j`, what keeps the index current |
 | `extensions/core/mcp.ts` | the long-lived `codegraph serve --mcp` client |

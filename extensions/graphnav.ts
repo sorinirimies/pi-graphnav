@@ -1,5 +1,5 @@
 /**
- * pi-codegraph: CodeGraph-first code navigation for pi.
+ * pi-graphnav: CodeGraph-first code navigation for pi.
  *
  * - keeps the project's index current (init/index/sync at session start, then the server's watcher);
  * - registers the codegraph_* tools on one long-lived server per project;

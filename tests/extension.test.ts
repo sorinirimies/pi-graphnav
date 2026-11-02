@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultRunner, exitCode, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/codegraph.ts";
+import { defaultRunner, exitCode, READ_HINT, type Status, searchesOf, statusReport, statusText } from "../extensions/graphnav.ts";
 import { type Config, configPath, DEFAULT_CONFIG } from "../extensions/core/config.ts";
 import type { ServerProcess, Spawner } from "../extensions/core/mcp.ts";
 import type { Runner } from "../extensions/core/project.ts";

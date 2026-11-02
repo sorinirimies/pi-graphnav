@@ -15,14 +15,14 @@ Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 """
 body = """
 {% if version -%}
-## [{{ version | trim_start_matches(pat="v") }}](https://github.com/sorinirimies/pi-codegraph/releases/tag/{{ version }}) — {{ timestamp | date(format="%Y-%m-%d") }}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/sorinirimies/pi-graphnav/releases/tag/{{ version }}) — {{ timestamp | date(format="%Y-%m-%d") }}
 {% else -%}
 ## [Unreleased]
 {% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim | upper_first }}
 {% for commit in commits %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\\n") | first | trim | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/sorinirimies/pi-codegraph/commit/{{ commit.id }}))
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\\n") | first | trim | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/sorinirimies/pi-graphnav/commit/{{ commit.id }}))
 {%- endfor %}
 {% endfor %}
 """

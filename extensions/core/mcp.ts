@@ -88,7 +88,7 @@ export class CodeGraphServer {
 			rootUri,
 			workspaceFolders: [{ uri: rootUri, name: this.root.split(/[\\/]/).pop() || this.root }],
 			capabilities: {},
-			clientInfo: { name: "pi-codegraph", version: "1" },
+			clientInfo: { name: "pi-graphnav", version: "1" },
 		}).then(() => {
 			this.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 		});

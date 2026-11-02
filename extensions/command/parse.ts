@@ -1,4 +1,4 @@
-/** `/codegraph ...`: parsing and argument completion. Pure: the handler in codegraph.ts acts on the result. */
+/** `/codegraph ...`: parsing and argument completion. Pure: the handler in graphnav.ts acts on the result. */
 import { MODES, type Mode } from "../core/config.ts";
 
 export type Command =

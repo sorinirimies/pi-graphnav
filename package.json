@@ -1,5 +1,5 @@
 {
-  "name": "pi-codegraph",
+  "name": "pi-graphnav",
   "version": "0.1.0",
   "description": "CodeGraph-first code navigation for pi: persistent index, auto init/sync, and a gate that steers structural searches to codegraph_* tools.",
   "keywords": [
@@ -13,9 +13,9 @@
   "author": "Sorin Albu-Irimies",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sorinirimies/pi-codegraph.git"
+    "url": "git+https://github.com/sorinirimies/pi-graphnav.git"
   },
-  "homepage": "https://github.com/sorinirimies/pi-codegraph#readme",
+  "homepage": "https://github.com/sorinirimies/pi-graphnav#readme",
   "files": [
     "extensions",
     "README.md",
@@ -23,7 +23,7 @@
   ],
   "pi": {
     "extensions": [
-      "./extensions/codegraph.ts"
+      "./extensions/graphnav.ts"
     ]
   },
   "scripts": {

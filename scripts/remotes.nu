@@ -14,8 +14,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 export const REMOTES = {
-    origin: "git@github.com:sorinirimies/pi-codegraph.git"
-    gitea-starscream: "gitea@192.168.1.44:sorin/pi-codegraph.git"
+    origin: "git@github.com:sorinirimies/pi-graphnav.git"
+    gitea-starscream: "gitea@192.168.1.44:sorin/pi-graphnav.git"
 }
 
 # The wanted remotes that are configured, in REMOTES order.

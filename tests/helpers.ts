@@ -1,5 +1,5 @@
 /** A fake `pi` and command context, so tests drive the extension the way pi would. */
-import { createExtension, type Deps } from "../extensions/codegraph.ts";
+import { createExtension, type Deps } from "../extensions/graphnav.ts";
 
 type Handler = (event: any, ctx: any) => Promise<any> | any;
 export type Command = {
