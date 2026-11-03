@@ -63,6 +63,11 @@ vhs name="":
 fuzz iterations="5000": _check-bun
     nu scripts/ci/fuzz.nu --iterations {{ iterations }}
 
+# Secrets anywhere in the git history (brew install gitleaks); CI runs it on every push.
+# A false positive goes in .gitleaksignore, by the fingerprint gitleaks prints.
+secrets:
+    gitleaks git --redact --no-banner .
+
 # Known vulnerabilities in the dependencies
 audit: _check-bun
     bun audit

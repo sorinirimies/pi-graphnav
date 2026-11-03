@@ -24,8 +24,8 @@ const NIGHTLIES = [[file github gitea];
     ["security.yml" "0 3 * * *" "30 3 * * *"]
     ["fuzz.yml" "0 4 * * *" "30 4 * * *"]]
 
-def "test workflows: both hosts share ci, release, security and fuzz" [] {
-    let shared = ["ci.yml" "fuzz.yml" "release.yml" "security.yml"]
+def "test workflows: both hosts share ci, release, security, secrets and fuzz" [] {
+    let shared = ["ci.yml" "fuzz.yml" "release.yml" "secrets.yml" "security.yml"]
     assert equal (workflows ".github" | where $it in $shared) $shared
     assert equal (workflows ".gitea" | where $it in $shared) $shared
 }
@@ -33,7 +33,7 @@ def "test workflows: both hosts share ci, release, security and fuzz" [] {
 def "test workflows: only the documented host-specific workflows exist" [] {
     let gh = ["auto-merge.yml" "deps-update.yml" "gitea-actions.yml"]
     let gitea = ["mirror.yml"]
-    let shared = ["ci.yml" "fuzz.yml" "release.yml" "security.yml"]
+    let shared = ["ci.yml" "fuzz.yml" "release.yml" "secrets.yml" "security.yml"]
     assert equal (workflows ".github") ($shared | append $gh | sort)
     assert equal (workflows ".gitea") ($shared | append $gitea | sort)
 }
