@@ -70,9 +70,9 @@ def "main bot" [name: string, email: string] {
     ^git config user.email $email
 }
 
-def "main commit" [ships: string] {
+def "main commit" [ships: any] {
     ^git add ...$MANIFESTS
-    ^git commit -m (commit_message ($ships == "true") (today))
+    ^git commit -m (commit_message (($ships | into string) == "true") (today))
 }
 
 def "main bump" [] {

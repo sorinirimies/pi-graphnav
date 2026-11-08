@@ -3,7 +3,7 @@
  *
  * The names match the CodeGraph MCP server's tools, so calls pass straight through.
  */
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 const projectPath = Type.Optional(
 	Type.String({ description: "Absolute path of another indexed project. Defaults to the current project." }),
