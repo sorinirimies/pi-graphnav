@@ -3,6 +3,23 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.3.1](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.1) — 2026-11-09
+
+
+### 🐛 Fixes
+
+- Import Type from typebox (pi-ai 1.5 no longer re-exports it) ([`5af237b`](https://github.com/sorinirimies/pi-graphnav/commit/5af237b2eb7b3b9b80fe2ff838031a280e6b2deb))
+
+### 🧪 Tests
+
+- Cover the gate's index probe failing and timing out ([`b04ae43`](https://github.com/sorinirimies/pi-graphnav/commit/b04ae437b73e3471e7d76b3187b2a8291991bf3e))
+
+### 🔧 Build & CI
+
+- **deps:** Bump Gitea workflow actions ([`e8c61f0`](https://github.com/sorinirimies/pi-graphnav/commit/e8c61f0fb17e164c59ea6623aea4d5abd4a4c02a))
+- **deps:** Bump taiki-e/install-action from 2.87.32 to 2.88.1 (#1) ([`277e8df`](https://github.com/sorinirimies/pi-graphnav/commit/277e8dfcc919189a0a6ccb38228b76f0be2eb6e8))
+- Dependency policy and release from CI, as in the plugin template ([`065054c`](https://github.com/sorinirimies/pi-graphnav/commit/065054cffccaeb8f62177fb6087197ddcd2a2eb9))
+- Scan the git history for secrets with gitleaks ([`26ad6aa`](https://github.com/sorinirimies/pi-graphnav/commit/26ad6aac4b6e370e8193a3f1bc513211e13bee28))
 ## [0.3.0](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.0) — 2026-11-02
 
 
