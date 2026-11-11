@@ -42,13 +42,13 @@
     "minimatch": "11.0.3"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^1.5.1",
-    "@earendil-works/pi-coding-agent": "^1.5.1",
+    "@earendil-works/pi-ai": "^1.5.2",
+    "@earendil-works/pi-coding-agent": "^1.5.2",
     "@types/bun": "^1.4.4",
     "typebox": "^1.4.6",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "arrow-resilience-kit": "^0.10.5"
+    "arrow-resilience-kit": "^0.10.6"
   }
 }
