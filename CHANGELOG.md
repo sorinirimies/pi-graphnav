@@ -3,6 +3,16 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.3.2](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.2) — 2026-11-11
+
+
+### 🔧 Build & CI
+
+- **deps:** Bump Gitea workflow actions ([`9f00541`](https://github.com/sorinirimies/pi-graphnav/commit/9f00541fbcc2ea728f574e658e892b0cc522b036))
+
+### 🧹 Chores
+
+- Nightly dev-tooling lockfile update 2026-11-10 (not released) ([`e8f9990`](https://github.com/sorinirimies/pi-graphnav/commit/e8f99902f181cf4937f9eb0a560659ee4588cb8c))
 ## [0.3.1](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.1) — 2026-11-09
 
 
