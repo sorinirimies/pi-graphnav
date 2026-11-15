@@ -3,6 +3,12 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.3.4](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.4) — 2026-11-15
+
+
+### 🧹 Chores
+
+- Nightly dev-tooling lockfile update 2026-11-13 (not released) ([`cd3c193`](https://github.com/sorinirimies/pi-graphnav/commit/cd3c193c79c9fbdbac8205395a05dc4015706765))
 ## [0.3.2](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.2) — 2026-11-11
 
 
