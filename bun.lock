@@ -5,7 +5,7 @@
     "": {
       "name": "pi-graphnav",
       "dependencies": {
-        "arrow-resilience-kit": "^0.10.7",
+        "arrow-resilience-kit": "^0.10.8",
       },
       "devDependencies": {
         "@earendil-works/pi-ai": "^1.5.2",
@@ -169,7 +169,7 @@
 
     "agent-base": ["agent-base@9.0.0", "", {}, "sha512-TQf59BsZnytt8GdJKLPfUZ54g/iaUL2OWDSFCCvMOhsHduDQxO8xC4PNeyIkVcA5KwL2phPSv0douC0fgWzmnA=="],
 
-    "arrow-resilience-kit": ["arrow-resilience-kit@0.10.7", "", {}, "sha512-90NTLDu4mIM0PgF63Iz0UR2Jx42nr6T5xqewfgDSYgXiOAtknu3vX8zck/vhTmcJugxZGuXdXPNGfR0ep7zEhQ=="],
+    "arrow-resilience-kit": ["arrow-resilience-kit@0.10.8", "", {}, "sha512-WX9knDYVsGbTvL/6VZtAG6eE9suYkpicVv5rbBzY7mQn+dtnAtVlOSsj+O7OSTOPozkhk4S3wRNtcUY8kaD3BQ=="],
 
     "balanced-match": ["balanced-match@4.0.4", "", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
 

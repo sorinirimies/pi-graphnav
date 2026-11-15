@@ -49,6 +49,6 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "arrow-resilience-kit": "^0.10.7"
+    "arrow-resilience-kit": "^0.10.8"
   }
 }
