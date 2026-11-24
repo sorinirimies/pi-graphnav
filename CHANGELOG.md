@@ -3,6 +3,19 @@
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org). Do not edit by hand.
 
+## [0.3.5](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.5) — 2026-11-24
+
+
+### 🔧 Build & CI
+
+- **deps:** Bump hustcer/setup-nu from 3.29 to 3.30 (#4) ([`ec44847`](https://github.com/sorinirimies/pi-graphnav/commit/ec44847c28d9d03115d3a1882fc8cae39349bf6f))
+- **deps:** Bump Gitea workflow actions ([`95d3028`](https://github.com/sorinirimies/pi-graphnav/commit/95d30284edbaa103bb8102489af164c29f5b23ff))
+- **deps:** Bump Gitea workflow actions ([`e341e22`](https://github.com/sorinirimies/pi-graphnav/commit/e341e22bdd0e0e0cba339b078f0fbd2194d98c01))
+
+### 🧹 Chores
+
+- Nightly dev-tooling lockfile update 2026-11-17 (not released) ([`2ecc749`](https://github.com/sorinirimies/pi-graphnav/commit/2ecc7493ea2486edd3fef82ec898fbf9c3709d75))
+- Nightly dev-tooling lockfile update 2026-11-18 (not released) ([`89b0420`](https://github.com/sorinirimies/pi-graphnav/commit/89b04204a2cfcb643822eb51c8b5ee0aee957f53))
 ## [0.3.4](https://github.com/sorinirimies/pi-graphnav/releases/tag/v0.3.4) — 2026-11-15
 
 
